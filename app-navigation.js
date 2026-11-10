@@ -1,6 +1,6 @@
 const baseGroups=[
  ['Acompanhar',[['grid','Visão geral','/app'],['wallet','Minha carteira','/app/carteira'],['bank','Conta digital','/app/conta-digital'],['doc','Informe de rendimentos','/app/informe']]],
- ['Investir',[['layers','Oportunidades','/app/oportunidades'],['swap','Marketplace','/app/marketplace'],['chart','Mesa OTC','/app/otc']]],
+ ['Participações',[['layers','Oportunidades','/app/oportunidades'],['swap','Marketplace','/app/marketplace'],['chart','Mesa OTC','/app/otc']]],
  ['Minha conta',[['user','Meu perfil','/app/perfil'],['gift','Indicações','/app/indicacoes']]]
 ];
 export function renderAppNavigation({route,logo,icon,isAdmin}){
