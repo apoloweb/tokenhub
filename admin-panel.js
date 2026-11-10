@@ -25,6 +25,26 @@ export async function fetchMyRole() {
   return rows?.[0]?.role || 'usuario';
 }
 
+// Perfil do usuário logado (para a página Meu perfil).
+export async function fetchMyProfile() {
+  let r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=email,full_name,username,phone,role&limit=1', { headers: authHeaders() });
+  if (!r.ok) r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=email,full_name,role&limit=1', { headers: authHeaders() });
+  if (!r.ok) return null;
+  const rows = await r.json();
+  return rows?.[0] || null;
+}
+
+export async function saveMyProfile(fields) {
+  const u = currentUser();
+  if (!u) throw new Error('Não autenticado');
+  const r = await fetch(SUPABASE_URL + '/rest/v1/profiles?id=eq.' + u.id, {
+    method: 'PATCH',
+    headers: authHeaders({ 'Content-Type': 'application/json', Prefer: 'return=minimal' }),
+    body: JSON.stringify(fields),
+  });
+  if (!r.ok) throw new Error((await r.text()) || ('Erro ' + r.status));
+}
+
 async function listUsers() {
   const r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=id,email,full_name,role,created_at&order=created_at.asc', { headers: authHeaders() });
   if (!r.ok) throw new Error('Não foi possível listar (' + r.status + ')');
