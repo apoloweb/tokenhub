@@ -9,6 +9,16 @@ const COLS = 'id,name,issuer,category,rate,term,min,raised,goal,progress,remaini
 // Busca as oportunidades no banco e substitui o conteúdo de `target` no lugar (mantém a mesma
 // referência do array que o app.js importou). Em erro (rede/banco fora), lança — o chamador
 // mantém os fixtures locais como fallback.
+// Grava um lead (formulários de contato / para empresas). Inserção pública (RLS).
+export async function insertLead(lead) {
+  const r = await fetch(REST + '/leads', {
+    method: 'POST',
+    headers: { ...headers, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(lead),
+  });
+  if (!r.ok) throw new Error((await r.text()) || ('Erro ' + r.status));
+}
+
 export async function loadOpportunities(target) {
   const res = await fetch(REST + '/opportunities?select=' + COLS + '&order=sort_order.asc', { headers });
   if (!res.ok) throw new Error('Supabase opportunities ' + res.status);

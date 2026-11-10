@@ -1,7 +1,7 @@
 // Fatia 3: carrega a carteira do usuário logado do Supabase e injeta no modelo.
 // Visitante (sem login) mantém a carteira de exemplo.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { currentUser, accessToken } from './auth.js';
+import { currentUser, accessToken } from './auth.js?v=v7';
 import { exampleWalletData, replaceWalletData } from './wallet-model.js?v=wallet-model-v1';
 
 const REST = SUPABASE_URL + '/rest/v1';
@@ -61,3 +61,27 @@ export async function syncWallet() {
 }
 
 export function resetWalletToExample() { replaceWalletData(exampleWalletData); }
+
+// Grava um ou mais movimentos na carteira do usuário logado e re-sincroniza.
+export async function addWalletEntries(entries) {
+  const u = currentUser();
+  if (!u) throw new Error('Entre na sua conta para fazer isso.');
+  const rows = entries.map((e, i) => ({
+    user_id: u.id,
+    entry_id: e.entry_id || ('op-' + Date.now().toString(36) + '-' + i + '-' + Math.random().toString(36).slice(2, 7)),
+    date: e.date || new Date().toISOString().slice(0, 10),
+    kind: e.kind,
+    asset_id: e.assetId,
+    units: e.units,
+    project_id: e.projectId || null,
+    status: 'posted',
+    name: e.name,
+  }));
+  const r = await fetch(REST + '/wallet_entries', {
+    method: 'POST',
+    headers: { ...headers(), 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+    body: JSON.stringify(rows),
+  });
+  if (!r.ok) throw new Error((await r.text()) || ('Erro ' + r.status));
+  await syncWallet();
+}

@@ -82,6 +82,17 @@ export async function signOut() {
   }
 }
 
+// Envia e-mail de redefinição de senha (fluxo nativo do Supabase).
+export async function requestPasswordReset(email, redirectTo) {
+  const res = await fetch(AUTH + '/recover', {
+    method: 'POST', headers: base,
+    body: JSON.stringify({ email, ...(redirectTo ? { gotrue_meta_security: {} } : {}) }),
+  });
+  // O GoTrue responde 200 mesmo se o e-mail não existir (não revela cadastro).
+  if (!res.ok) { await parse(res); }
+  return { ok: true };
+}
+
 // Mensagens amigáveis em pt-BR para os erros mais comuns.
 export function authMessage(err) {
   const m = (err?.message || '').toLowerCase();
