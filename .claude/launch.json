@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "tokenhub",
+      "runtimeExecutable": "python",
+      "runtimeArgs": ["-m", "http.server", "4189"],
+      "port": 4189
+    }
+  ]
+}

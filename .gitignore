@@ -1,0 +1,12 @@
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Segredos — NUNCA versionar (a anon key pública fica em supabase-config.js, isso é ok)
+.env
+.env.*
+*.secret
+
+# Ferramentas locais
+.impeccable/
