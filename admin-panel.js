@@ -121,22 +121,47 @@ export function mountAdmin(app, { toast } = {}) {
     } finally { btn.disabled = false; }
   }, { signal });
 
-  // Ações (gerar senha, trocar papel, resetar, apagar)
+  // Ações: gerar senha (1 clique); apagar/resetar com confirmação em 2 cliques
+  // (sem confirm() nativo — vários navegadores bloqueiam e o botão parece não reagir).
+  const disarm = (b) => { clearTimeout(b._t); b.dataset.armed = ''; if (b.dataset.label) b.textContent = b.dataset.label; b.classList.remove('btn-dark'); };
   root.addEventListener('click', async (e) => {
     const b = e.target.closest('[data-admin]');
     if (!b) return;
     const kind = b.dataset.admin;
+    const fb = root.querySelector('#admin-users-feedback');
+
     if (kind === 'gen') { root.querySelector('#au-pass').value = genPassword(); return; }
-    if (kind === 'reset') {
-      const pass = genPassword();
-      if (!confirm(`Resetar a senha de ${b.dataset.email}?\n\nNova senha:\n${pass}\n\nCopie agora — ela não será mostrada de novo.`)) return;
-      try { await callAdmin('resetPassword', { userId: b.dataset.id, password: pass }); notify('Senha redefinida.'); }
-      catch (err) { notify(err.message); }
+    if (kind !== 'delete' && kind !== 'reset') return;
+
+    // 1º clique: arma a confirmação. Reseta outros botões armados.
+    if (b.dataset.armed !== '1') {
+      root.querySelectorAll('[data-admin][data-armed="1"]').forEach(disarm);
+      b.dataset.armed = '1';
+      b.dataset.label = b.dataset.label || b.textContent;
+      b.textContent = kind === 'delete' ? 'Confirmar exclusão' : 'Confirmar reset';
+      b.classList.add('btn-dark');
+      b._t = setTimeout(() => { if (b.isConnected) disarm(b); }, 5000);
+      return;
     }
-    if (kind === 'delete') {
-      if (!confirm(`Apagar definitivamente ${b.dataset.email}? Esta ação não pode ser desfeita.`)) return;
-      try { await callAdmin('delete', { userId: b.dataset.id }); notify('Usuário apagado.'); await refresh(); }
-      catch (err) { notify(err.message); }
+
+    // 2º clique: executa.
+    disarm(b); b.disabled = true;
+    try {
+      if (kind === 'delete') {
+        await callAdmin('delete', { userId: b.dataset.id });
+        if (fb) fb.innerHTML = `<span class="form-success">Usuário ${esc(b.dataset.email)} apagado.</span>`;
+        notify('Usuário apagado.');
+        await refresh();
+      } else {
+        const pass = genPassword();
+        await callAdmin('resetPassword', { userId: b.dataset.id, password: pass });
+        if (fb) fb.innerHTML = `<div class="form-success">Nova senha de ${esc(b.dataset.email)}: <code>${esc(pass)}</code><br><small>Copie agora — não será mostrada de novo.</small></div>`;
+        notify('Senha redefinida.');
+        b.disabled = false;
+      }
+    } catch (err) {
+      if (fb) fb.innerHTML = `<span class="form-error">${esc(err.message)}</span>`;
+      b.disabled = false;
     }
   }, { signal });
 
