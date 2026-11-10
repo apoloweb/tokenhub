@@ -27,11 +27,20 @@ export async function fetchMyRole() {
 
 // Perfil do usuário logado (para a página Meu perfil).
 export async function fetchMyProfile() {
-  let r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=email,full_name,username,phone,role&limit=1', { headers: authHeaders() });
+  let r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=email,full_name,username,phone,role,referral_code,referred_by&limit=1', { headers: authHeaders() });
   if (!r.ok) r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=email,full_name,role&limit=1', { headers: authHeaders() });
   if (!r.ok) return null;
   const rows = await r.json();
   return rows?.[0] || null;
+}
+
+// Pessoas que o usuário logado indicou (RLS: referred_by = auth.uid()).
+export async function fetchMyReferrals() {
+  const u = currentUser();
+  if (!u) return [];
+  const r = await fetch(SUPABASE_URL + '/rest/v1/profiles?select=full_name,email,created_at&referred_by=eq.' + u.id + '&order=created_at.desc', { headers: authHeaders() });
+  if (!r.ok) return [];
+  return r.json();
 }
 
 export async function saveMyProfile(fields) {
