@@ -47,6 +47,35 @@ export function currentUser() { return session?.user || null; }
 export function isLoggedIn() { return !!session?.access_token; }
 export function accessToken() { return session?.access_token || null; }
 
+// Renova o access_token usando o refresh_token. Se o refresh falhar (expirado/revogado),
+// desloga; se for erro de rede, mantém a sessão atual.
+let refreshing = null;
+export async function refreshSession() {
+  const rt = session?.refresh_token;
+  if (!rt) return null;
+  if (refreshing) return refreshing;
+  refreshing = (async () => {
+    try {
+      const res = await fetch(AUTH + '/token?grant_type=refresh_token', { method: 'POST', headers: base, body: JSON.stringify({ refresh_token: rt }) });
+      if (res.status === 400 || res.status === 401) { save(null); return null; }
+      if (!res.ok) return session;
+      const body = await res.json();
+      if (body?.access_token) { store(body); return session; }
+      return session;
+    } catch { return session; }
+    finally { refreshing = null; }
+  })();
+  return refreshing;
+}
+
+// Garante um token válido: renova se expirado ou perto de expirar.
+export async function ensureFreshSession() {
+  if (!session?.access_token) return null;
+  const now = Math.floor(Date.now() / 1000);
+  if ((session.expires_at || 0) - now < 120) return refreshSession();
+  return session;
+}
+
 // Cadastro. Com confirmação de e-mail ligada, NÃO cria sessão: o usuário confirma pelo e-mail.
 // Retorna { needsConfirmation: boolean }.
 export async function signUp(email, password, meta = {}) {

@@ -1,7 +1,7 @@
 // Painel admin: CRUD de imóveis/anúncios (tabela opportunities).
 // Escrita via RLS (admin). Leitura pública.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { accessToken } from './auth.js?v=v8';
+import { accessToken } from './auth.js?v=v9';
 
 const CATS = ['Imobiliário', 'Energia', 'Agronegócio', 'Recebíveis', 'Outros'];
 const ARTS = [['urban', 'Urbano / Imóvel'], ['solar', 'Energia / Solar'], ['agro', 'Agro / Campo'], ['flow', 'Recebíveis / Fluxo']];

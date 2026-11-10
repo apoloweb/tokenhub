@@ -20,7 +20,7 @@ import {openUpGallery} from './up-gallery.js?v=gallery-v21';
 import {upOpportunity,upCard,upDetail,upPhotos} from './up.js?v=up-handoff-v3';
 import {offers,faq,articles} from './data.js';
 import {loadOpportunities,insertLead} from './supabase.js?v=v9';
-import {signIn,signUp,signOut,currentUser,isLoggedIn,authMessage,requestPasswordReset,ingestRecoveryTokens,updatePassword} from './auth.js?v=v8';
+import {signIn,signUp,signOut,currentUser,isLoggedIn,authMessage,requestPasswordReset,ingestRecoveryTokens,updatePassword,ensureFreshSession} from './auth.js?v=v9';
 import {syncWallet,resetWalletToExample,addWalletEntries} from './wallet-sync.js?v=v8';
 import {adminBody,mountAdmin,fetchMyProfile,saveMyProfile,fetchMyReferrals} from './admin-panel.js?v=admin-v5';
 import {opportunitiesBody,mountOpportunities} from './admin-opportunities.js?v=opp-v3';
@@ -192,8 +192,9 @@ document.addEventListener('submit',async e=>{const form=e.target.closest('form[d
 window.addEventListener('hashchange',()=>{const navigate=()=>{state.detailTab='Visão geral';render();window.scrollTo(0,0);document.querySelector('#main')?.focus({preventScroll:true});};if(document.startViewTransition&&!matchMedia('(prefers-reduced-motion: reduce)').matches)document.startViewTransition(navigate);else navigate();});
 ingestRecoveryTokens();
 try{const rm=location.hash.match(/[?&]ref=([^&\s]+)/);if(rm&&rm[1]!=='demo')state.regRef=decodeURIComponent(rm[1]);}catch{}
-loadOpportunities(offers).catch(err=>console.warn('Oportunidades: usando fixtures locais (Supabase indisponível).',err)).finally(async()=>{if(currentUser()){try{state.profile=await fetchMyProfile();state.role=state.profile?.role||'usuario';}catch{}}render();syncWallet().catch(err=>console.warn('Carteira: usando exemplo.',err));});
+loadOpportunities(offers).catch(err=>console.warn('Oportunidades: usando fixtures locais (Supabase indisponível).',err)).finally(async()=>{await ensureFreshSession().catch(()=>{});if(currentUser()){try{state.profile=await fetchMyProfile();state.role=state.profile?.role||'usuario';}catch{}}render();syncWallet().catch(err=>console.warn('Carteira: usando exemplo.',err));});
 initInteractionSounds();
+setInterval(()=>{if(isLoggedIn())ensureFreshSession().catch(()=>{});},10*60*1000);
 
 
 

@@ -1,6 +1,6 @@
 // Painel admin: configurações gerais (conta de depósito + contrato padrão).
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { accessToken } from './auth.js?v=v8';
+import { accessToken } from './auth.js?v=v9';
 
 const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const headers = (extra = {}) => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (accessToken() || SUPABASE_ANON_KEY), ...extra });
