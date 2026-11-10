@@ -4,7 +4,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 const REST = SUPABASE_URL + '/rest/v1';
 const headers = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
 
-const COLS = 'id,name,issuer,category,rate,term,min,raised,goal,progress,remaining,risk,art,description';
+const COLS = 'id,name,issuer,category,rate,term,min,raised,goal,progress,remaining,risk,art,description,image_url';
 
 // Busca as oportunidades no banco e substitui o conteúdo de `target` no lugar (mantém a mesma
 // referência do array que o app.js importou). Em erro (rede/banco fora), lança — o chamador
@@ -20,7 +20,8 @@ export async function insertLead(lead) {
 }
 
 export async function loadOpportunities(target) {
-  const res = await fetch(REST + '/opportunities?select=' + COLS + '&order=sort_order.asc', { headers });
+  let res = await fetch(REST + '/opportunities?select=' + COLS + '&order=sort_order.asc', { headers });
+  if (!res.ok) res = await fetch(REST + '/opportunities?select=' + COLS.replace(',image_url', '') + '&order=sort_order.asc', { headers });
   if (!res.ok) throw new Error('Supabase opportunities ' + res.status);
   const rows = await res.json();
   if (Array.isArray(rows) && rows.length) {
@@ -29,6 +30,7 @@ export async function loadOpportunities(target) {
       rate: Number(r.rate), term: Number(r.term), min: Number(r.min),
       raised: Number(r.raised), goal: Number(r.goal), progress: Number(r.progress),
       remaining: Number(r.remaining), risk: r.risk, art: r.art, description: r.description,
+      image_url: r.image_url || null,
     }));
     target.splice(0, target.length, ...clean);
   }

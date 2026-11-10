@@ -26,6 +26,19 @@ async function deleteOpp(id) {
   if (!r.ok) throw new Error((await r.text()) || ('Erro ' + r.status));
 }
 
+// Envia a imagem para o bucket "imoveis" e devolve a URL pública.
+async function uploadImage(file) {
+  const ext = (file.name.split('.').pop() || 'jpg').toLowerCase().replace(/[^a-z0-9]/g, '') || 'jpg';
+  const path = Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8) + '.' + ext;
+  const r = await fetch(SUPABASE_URL + '/storage/v1/object/imoveis/' + path, {
+    method: 'POST',
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (accessToken() || ''), 'Content-Type': file.type || 'application/octet-stream', 'x-upsert': 'true' },
+    body: file,
+  });
+  if (!r.ok) throw new Error('Falha no upload da imagem: ' + ((await r.text()) || r.status));
+  return SUPABASE_URL + '/storage/v1/object/public/imoveis/' + path;
+}
+
 const sel = (label, name, opts, val) => `<div class="field"><label>${label}</label><select name="${name}">${opts.map((o) => { const [v, l] = Array.isArray(o) ? o : [o, o]; return `<option value="${esc(v)}"${v === val ? ' selected' : ''}>${esc(l)}</option>`; }).join('')}</select></div>`;
 
 export function opportunitiesBody() {
@@ -46,7 +59,8 @@ export function opportunitiesBody() {
         <div class="field"><label>Captação (%)</label><input name="progress" type="number" step="0.1" value="0"></div>
         <div class="field"><label>Dias restantes</label><input name="remaining" type="number" value="30"></div>
         ${sel('Risco', 'risk', RISKS, 'Alto')}
-        ${sel('Imagem', 'art', ARTS, 'urban')}
+        ${sel('Arte (fallback)', 'art', ARTS, 'urban')}
+        <div class="field" style="grid-column:1/-1"><label>Foto do imóvel (upload)</label><input type="file" name="imagefile" accept="image/*"><input type="hidden" name="image_url"><small class="hint">JPG, PNG ou WebP. Se não enviar, usa a arte selecionada acima.</small><div id="opp-image-preview" style="margin-top:8px"></div></div>
         <div class="field" style="grid-column:1/-1"><label>Descrição</label><textarea name="description" rows="3" maxlength="900"></textarea></div>
         <div class="field"><label>Ordem de exibição</label><input name="sort_order" type="number" value="99"></div>
         <div style="grid-column:1/-1"><button type="submit" class="btn btn-dark">Salvar imóvel</button> <button type="button" class="btn btn-outline" data-opp="novo">Limpar / novo</button><span id="opp-msg" role="status" style="margin-left:12px"></span></div>
@@ -63,16 +77,25 @@ export function mountOpportunities(app, { toast, onChange } = {}) {
   const form = root.querySelector('#opp-form');
   const msg = root.querySelector('#opp-msg');
   const notify = (m) => (toast ? toast(m) : null);
-  const FIELDS = ['name', 'issuer', 'category', 'rate', 'term', 'min', 'raised', 'goal', 'progress', 'remaining', 'risk', 'art', 'description', 'sort_order'];
+  const FIELDS = ['name', 'issuer', 'category', 'rate', 'term', 'min', 'raised', 'goal', 'progress', 'remaining', 'risk', 'art', 'description', 'sort_order', 'image_url'];
   let cache = [];
+  const preview = (url) => { const el = root.querySelector('#opp-image-preview'); if (el) el.innerHTML = url ? `<img src="${esc(url)}" alt="" style="max-width:240px;border-radius:10px;display:block">` : ''; };
 
   function fillForm(o) {
-    if (!o) { form.reset(); form.elements._mode.value = 'new'; form.elements.id.readOnly = false; root.querySelector('#opp-form-title').textContent = 'Novo imóvel'; return; }
+    form.elements.imagefile.value = '';
+    if (!o) { form.reset(); form.elements._mode.value = 'new'; form.elements.id.readOnly = false; root.querySelector('#opp-form-title').textContent = 'Novo imóvel'; preview(''); return; }
     form.elements._mode.value = 'edit';
     root.querySelector('#opp-form-title').textContent = 'Editar: ' + o.name;
     form.elements.id.value = o.id; form.elements.id.readOnly = true;
     FIELDS.forEach((k) => { if (form.elements[k]) form.elements[k].value = o[k] ?? ''; });
+    preview(o.image_url);
   }
+
+  // Pré-visualiza a foto escolhida antes de enviar.
+  form.elements.imagefile.addEventListener('change', (e) => {
+    const f = e.target.files && e.target.files[0];
+    if (f) preview(URL.createObjectURL(f));
+  }, { signal });
 
   async function refresh() {
     const box = root.querySelector('#opp-list');
@@ -89,9 +112,16 @@ export function mountOpportunities(app, { toast, onChange } = {}) {
     const fd = new FormData(form);
     const id = slug(fd.get('id'));
     if (!id) { msg.innerHTML = '<span class="form-error">Informe um identificador.</span>'; return; }
-    const row = { id, name: fd.get('name'), issuer: fd.get('issuer') || null, category: fd.get('category'), rate: num(fd.get('rate')), term: Math.round(num(fd.get('term'))), min: num(fd.get('min')), raised: num(fd.get('raised')), goal: num(fd.get('goal')), progress: num(fd.get('progress')), remaining: Math.round(num(fd.get('remaining'))), risk: fd.get('risk'), art: fd.get('art'), description: fd.get('description') || null, sort_order: Math.round(num(fd.get('sort_order'))) };
-    const btn = form.querySelector('button[type="submit"]'); btn.disabled = true; msg.innerHTML = 'Salvando…';
-    try { await saveOpp(row, isNew); msg.innerHTML = '<span class="form-success">Imóvel salvo.</span>'; fillForm(null); await refresh(); onChange && onChange(); }
+    const btn = form.querySelector('button[type="submit"]'); btn.disabled = true;
+    try {
+      let image_url = fd.get('image_url') || null;
+      const file = form.elements.imagefile.files[0];
+      if (file) { msg.innerHTML = 'Enviando imagem…'; image_url = await uploadImage(file); }
+      msg.innerHTML = 'Salvando…';
+      const row = { id, name: fd.get('name'), issuer: fd.get('issuer') || null, category: fd.get('category'), rate: num(fd.get('rate')), term: Math.round(num(fd.get('term'))), min: num(fd.get('min')), raised: num(fd.get('raised')), goal: num(fd.get('goal')), progress: num(fd.get('progress')), remaining: Math.round(num(fd.get('remaining'))), risk: fd.get('risk'), art: fd.get('art'), description: fd.get('description') || null, sort_order: Math.round(num(fd.get('sort_order'))), image_url };
+      await saveOpp(row, isNew);
+      msg.innerHTML = '<span class="form-success">Imóvel salvo.</span>'; fillForm(null); await refresh(); onChange && onChange();
+    }
     catch (err) { msg.innerHTML = `<span class="form-error">${esc(err.message)}</span>`; }
     finally { btn.disabled = false; }
   }, { signal });
