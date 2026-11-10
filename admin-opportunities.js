@@ -61,6 +61,11 @@ export function opportunitiesBody() {
         ${sel('Risco', 'risk', RISKS, 'Alto')}
         ${sel('Arte (fallback)', 'art', ARTS, 'urban')}
         <div class="field" style="grid-column:1/-1"><label>Foto do imóvel (upload)</label><input type="file" name="imagefile" accept="image/*"><input type="hidden" name="image_url"><small class="hint">JPG, PNG ou WebP. Se não enviar, usa a arte selecionada acima.</small><div id="opp-image-preview" style="margin-top:8px"></div></div>
+        <div class="field"><label>Valor do token/cota (R$)</label><input name="token_price_reais" type="number" step="0.01" min="1" value="100"></div>
+        <div class="field"><label>Estrutura jurídica</label><select name="legal_structure"><option value="SPE">SPE</option><option value="SCP">SCP</option></select></div>
+        <div class="field"><label>Razão social</label><input name="razao_social" maxlength="160" placeholder="Nome da SPE/sociedade"></div>
+        <div class="field"><label>CNPJ</label><input name="cnpj" maxlength="20" placeholder="(quando houver)"></div>
+        <div class="field"><label>Sócio ostensivo</label><input name="socio_ostensivo" maxlength="160" placeholder="(no caso de SCP)"></div>
         <div class="field" style="grid-column:1/-1"><label>Descrição</label><textarea name="description" rows="3" maxlength="900"></textarea></div>
         <div class="field"><label>Ordem de exibição</label><input name="sort_order" type="number" value="99"></div>
         <div style="grid-column:1/-1"><button type="submit" class="btn btn-dark">Salvar imóvel</button> <button type="button" class="btn btn-outline" data-opp="novo">Limpar / novo</button><span id="opp-msg" role="status" style="margin-left:12px"></span></div>
@@ -77,7 +82,7 @@ export function mountOpportunities(app, { toast, onChange } = {}) {
   const form = root.querySelector('#opp-form');
   const msg = root.querySelector('#opp-msg');
   const notify = (m) => (toast ? toast(m) : null);
-  const FIELDS = ['name', 'issuer', 'category', 'rate', 'term', 'min', 'raised', 'goal', 'progress', 'remaining', 'risk', 'art', 'description', 'sort_order', 'image_url'];
+  const FIELDS = ['name', 'issuer', 'category', 'rate', 'term', 'min', 'raised', 'goal', 'progress', 'remaining', 'risk', 'art', 'description', 'sort_order', 'image_url', 'legal_structure', 'razao_social', 'cnpj', 'socio_ostensivo'];
   let cache = [];
   const preview = (url) => { const el = root.querySelector('#opp-image-preview'); if (el) el.innerHTML = url ? `<img src="${esc(url)}" alt="" style="max-width:240px;border-radius:10px;display:block">` : ''; };
 
@@ -88,6 +93,7 @@ export function mountOpportunities(app, { toast, onChange } = {}) {
     root.querySelector('#opp-form-title').textContent = 'Editar: ' + o.name;
     form.elements.id.value = o.id; form.elements.id.readOnly = true;
     FIELDS.forEach((k) => { if (form.elements[k]) form.elements[k].value = o[k] ?? ''; });
+    if (form.elements.token_price_reais) form.elements.token_price_reais.value = ((o.token_price ?? 10000) / 100);
     preview(o.image_url);
   }
 
@@ -118,7 +124,7 @@ export function mountOpportunities(app, { toast, onChange } = {}) {
       const file = form.elements.imagefile.files[0];
       if (file) { msg.innerHTML = 'Enviando imagem…'; image_url = await uploadImage(file); }
       msg.innerHTML = 'Salvando…';
-      const row = { id, name: fd.get('name'), issuer: fd.get('issuer') || null, category: fd.get('category'), rate: num(fd.get('rate')), term: Math.round(num(fd.get('term'))), min: num(fd.get('min')), raised: num(fd.get('raised')), goal: num(fd.get('goal')), progress: num(fd.get('progress')), remaining: Math.round(num(fd.get('remaining'))), risk: fd.get('risk'), art: fd.get('art'), description: fd.get('description') || null, sort_order: Math.round(num(fd.get('sort_order'))), image_url };
+      const row = { id, name: fd.get('name'), issuer: fd.get('issuer') || null, category: fd.get('category'), rate: num(fd.get('rate')), term: Math.round(num(fd.get('term'))), min: num(fd.get('min')), raised: num(fd.get('raised')), goal: num(fd.get('goal')), progress: num(fd.get('progress')), remaining: Math.round(num(fd.get('remaining'))), risk: fd.get('risk'), art: fd.get('art'), description: fd.get('description') || null, sort_order: Math.round(num(fd.get('sort_order'))), image_url, token_price: Math.round(num(fd.get('token_price_reais')) * 100), legal_structure: fd.get('legal_structure') || 'SPE', razao_social: fd.get('razao_social') || null, cnpj: fd.get('cnpj') || null, socio_ostensivo: fd.get('socio_ostensivo') || null };
       await saveOpp(row, isNew);
       msg.innerHTML = '<span class="form-success">Imóvel salvo.</span>'; fillForm(null); await refresh(); onChange && onChange();
     }
