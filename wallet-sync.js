@@ -1,7 +1,7 @@
 // Fatia 3: carrega a carteira do usuário logado do Supabase e injeta no modelo.
 // Visitante (sem login) mantém a carteira de exemplo.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { currentUser, accessToken } from './auth.js?v=v7';
+import { currentUser, accessToken } from './auth.js?v=v8';
 import { exampleWalletData, replaceWalletData } from './wallet-model.js?v=wallet-model-v1';
 
 const REST = SUPABASE_URL + '/rest/v1';

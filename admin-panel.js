@@ -1,7 +1,7 @@
 // Painel admin interno: gestão de usuários e papéis.
 // Leitura/edição de papéis via RLS (admin). Criar/apagar/resetar senha via Edge Function.
 import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
-import { accessToken, currentUser } from './auth.js?v=v7';
+import { accessToken, currentUser } from './auth.js?v=v8';
 
 export const ROLES = [
   ['admin', 'Administrador'],
