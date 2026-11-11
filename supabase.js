@@ -4,7 +4,7 @@ import { SUPABASE_URL, SUPABASE_ANON_KEY } from './supabase-config.js';
 const REST = SUPABASE_URL + '/rest/v1';
 const headers = { apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + SUPABASE_ANON_KEY };
 
-const COLS = 'id,name,issuer,category,rate,term,min,raised,goal,progress,remaining,risk,art,description,image_url';
+const COLS = 'id,name,issuer,category,rate,term,min,raised,goal,progress,remaining,risk,art,description,image_url,token_price,legal_structure,razao_social,cnpj,socio_ostensivo';
 
 // Busca as oportunidades no banco e substitui o conteúdo de `target` no lugar (mantém a mesma
 // referência do array que o app.js importou). Em erro (rede/banco fora), lança — o chamador
@@ -31,6 +31,9 @@ export async function loadOpportunities(target) {
       raised: Number(r.raised), goal: Number(r.goal), progress: Number(r.progress),
       remaining: Number(r.remaining), risk: r.risk, art: r.art, description: r.description,
       image_url: r.image_url || null,
+      token_price: r.token_price != null ? Number(r.token_price) : null,
+      legal_structure: r.legal_structure || null, razao_social: r.razao_social || null,
+      cnpj: r.cnpj || null, socio_ostensivo: r.socio_ostensivo || null,
     }));
     target.splice(0, target.length, ...clean);
   }
