@@ -299,3 +299,48 @@ export function mountPedidos(app, { toast } = {}) {
   render();
   return () => controller.abort();
 }
+
+// ---------- Admin: Relatórios (captado + participantes por projeto) ----------
+export async function participationTotals() {
+  const r = await fetch(REST + '/participation_totals?select=*', { headers: h() });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export function relatoriosBody() {
+  return `<div id="relatorios-root">
+    <div class="app-heading"><div><span class="eyebrow">Administração</span><h1>Relatórios</h1><p>Total captado e participantes por projeto (participações aprovadas).</p></div></div>
+    <div id="relatorios-list">${loadingBlock()}</div>
+  </div>`;
+}
+
+export function mountRelatorios(app) {
+  const root = app.querySelector('#relatorios-root'); if (!root) return () => {};
+  const box = root.querySelector('#relatorios-list');
+  (async () => {
+    const [totals, approved] = await Promise.all([participationTotals(), allRequests('approved')]);
+    if (!totals.length) { box.innerHTML = `<div class="empty"><h3>Sem participações aprovadas ainda</h3><p>Quando você aprovar pedidos, os totais por projeto aparecem aqui.</p></div>`; return; }
+    const byProj = {};
+    approved.forEach((r) => { (byProj[r.opportunity_id] = byProj[r.opportunity_id] || []).push(r); });
+    const totCap = totals.reduce((s, t) => s + Number(t.captado_cents || 0), 0);
+    const totPart = new Set(approved.map((r) => r.user_id)).size;
+    const totCotas = totals.reduce((s, t) => s + Number(t.cotas || 0), 0);
+    const kpis = `<div class="stats" style="margin-bottom:18px">
+      <div class="stat"><span class="stat-label">Total captado</span><strong class="stat-value">${brl(totCap)}</strong></div>
+      <div class="stat"><span class="stat-label">Participantes</span><strong class="stat-value">${totPart}</strong></div>
+      <div class="stat"><span class="stat-label">Cotas emitidas</span><strong class="stat-value">${totCotas}</strong></div></div>`;
+    const cards = totals.map((t) => {
+      const parts = byProj[t.opportunity_id] || [];
+      const rows = parts.map((p) => `<tr><td><strong>${esc(p.investor_name || '—')}</strong>${p.cpf ? '<span class="cell-sub">CPF ' + esc(p.cpf) + '</span>' : ''}</td><td class="num">${p.tokens}</td><td class="num money-value">${brl(p.amount_cents)}</td><td>${dt(p.created_at)}</td></tr>`).join('');
+      return `<section class="panel" style="margin-bottom:14px">
+        <div class="row between wrap" style="gap:12px;align-items:baseline">
+          <h2 style="margin:0">${esc(t.opportunity_name || t.opportunity_id)}</h2>
+          <p class="small" style="margin:0"><strong>${brl(t.captado_cents)}</strong> captados · ${t.participantes} participante(s) · ${t.cotas} cota(s)</p></div>
+        <details style="margin-top:10px"><summary style="cursor:pointer;font-weight:600;font-size:14px">Ver participantes</summary>
+          <div class="table-wrap" style="margin-top:10px"><table><thead><tr><th>Participante</th><th>Cotas</th><th>Valor</th><th>Data</th></tr></thead><tbody>${rows || '<tr><td colspan="4" class="small">Nenhum participante.</td></tr>'}</tbody></table></div></details>
+      </section>`;
+    }).join('');
+    box.innerHTML = kpis + cards;
+  })();
+  return () => {};
+}
