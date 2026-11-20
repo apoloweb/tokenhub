@@ -109,9 +109,9 @@ begin
   -- Lançamentos na carteira do investidor (BRL: units = centavos).
   insert into public.wallet_entries (user_id, entry_id, date, kind, asset_id, units, project_id, status, name)
   values
-    (r.user_id, 'part-dep-'||r.id::text, current_date, 'deposit',    'brl',  r.amount_cents, null,
+    (r.user_id, 'part-dep-'||r.id::text, current_date, 'deposit',    'brl',  r.amount_cents, null, 'posted',
        'Depósito confirmado · '||coalesce(proj.name, r.opportunity_name, r.opportunity_id)),
-    (r.user_id, 'part-inv-'||r.id::text, current_date, 'investment', 'brl', -r.amount_cents, r.opportunity_id,
+    (r.user_id, 'part-inv-'||r.id::text, current_date, 'investment', 'brl', -r.amount_cents, r.opportunity_id, 'posted',
        'Participação · '||coalesce(proj.name, r.opportunity_name, r.opportunity_id))
   on conflict (user_id, entry_id) do nothing;
 
