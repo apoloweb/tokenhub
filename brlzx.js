@@ -122,6 +122,9 @@ function injectStyle() {
   el.textContent = `
 #brlzx-root .panel{margin-bottom:18px}
 #brlzx-root h2{margin:0 0 6px;font-size:22px;line-height:1.25}
+#brlzx-root p{margin:0 0 12px}
+#brlzx-root form{margin-top:14px}
+#brlzx-root .brlzx-alert p{margin:8px 0 0}
 #brlzx-root .brlzx-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
 #brlzx-root .brlzx-kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:13px;margin:10px 0}
 #brlzx-root .brlzx-kv dt{color:var(--muted)}
