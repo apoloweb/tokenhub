@@ -10,3 +10,4 @@ desktop.ini
 
 # Ferramentas locais
 .impeccable/
+__pycache__/
