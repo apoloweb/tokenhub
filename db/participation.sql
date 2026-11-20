@@ -50,11 +50,8 @@ create policy "pr: admin atualiza (rejeitar)"
   using (public.is_admin())
   with check (public.is_admin() and status in ('pending','rejected'));
 
--- Investidor pode cancelar (apagar) um pedido ainda PENDENTE seu.
+-- O investidor NÃO apaga pedidos (nem os pendentes): quem trata o pedido é o admin.
 drop policy if exists "pr: investidor cancela pendente" on public.participation_requests;
-create policy "pr: investidor cancela pendente"
-  on public.participation_requests for delete to authenticated
-  using (user_id = auth.uid() and status = 'pending');
 
 -- =====================================================================
 -- 2) Bucket privado para os comprovantes de PIX
