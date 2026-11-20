@@ -90,6 +90,8 @@ select t.ok((select address from public.brlzx_wallets) = lower(:'w_alice'), 'end
 select t.fails($$delete from public.brlzx_wallets$$, 'permission denied');
 select t.fails($$update public.brlzx_wallets set label = 'x'$$, 'permission denied');
 select t.fails(format('insert into public.brlzx_wallets (user_id, address) values (%L, %L)', :'alice', :'w_bob'), 'permission denied');
+select t.fails(format('select public.brlzx_add_wallet(%L, null, %L)', :'w_bob', :'bob'), 'Só a emissora cadastra carteira em nome');
+select t.fails($$select * from public.brlzx_find_user('bob@cliente')$$, 'Só a equipe');
 select set_config('request.jwt.claim.sub', :'bob', false) \g /dev/null
 select public.brlzx_add_wallet(:'w_bob') \g /dev/null
 select t.ok((select count(*) from public.brlzx_wallets) = 1, 'bob só vê a própria carteira');
@@ -150,6 +152,12 @@ select public.brlzx_reject_order(:'o4', 'Pagamento não identificado') \g /dev/n
 select set_config('request.jwt.claim.sub', :'alice', false) \g /dev/null
 select t.fails(format('select public.brlzx_request_redeem(1000, %L, '' '')', :'w_alice'), 'chave Pix');
 select id as r1 from public.brlzx_request_redeem(2000000, :'w_alice', 'Pix: alice@cliente') \gset
+select public.brlzx_redeem_inform_tx(:'r1', :'tx4') \g /dev/null
+select t.fails($$select * from public.brlzx_people(array[]::uuid[])$$, 'Só a equipe');
+select set_config('request.jwt.claim.sub', :'bob', false) \g /dev/null
+select t.fails(format('select public.brlzx_redeem_inform_tx(%L, %L)', :'r1', :'tx5'), 'próprias ordens');
+select set_config('request.jwt.claim.sub', :'admin', false) \g /dev/null
+select t.fails($$select public.brlzx_set_member_by_email('ninguem@x', 'emissora')$$, 'Não há conta');
 select set_config('request.jwt.claim.sub', :'own', false) \g /dev/null
 select t.fails(format('select public.brlzx_redeem_paid(%L)', :'r1'), 'status "solicitada"');        -- não paga antes dos tokens
 select t.fails(format('select public.brlzx_redeem_received(%L, %L)', :'r1', :'tx4'), 'Só a emissora confirma');
@@ -198,6 +206,7 @@ select t.ok((select queimado_cents from public.brlzx_totals()) = 2000000, 'queim
 select t.ok((select em_circulacao_cents from public.brlzx_totals()) = 53000000, 'em circulação');
 select t.ok((select reserva_cents from public.brlzx_totals()) = 53000000, 'reserva');
 select t.ok((select count(*) from public.brlzx_audit) >= 20, 'auditoria registra os atos');
+select t.ok((select email from public.brlzx_people(array['00000000-0000-0000-0000-0000000000c1']::uuid[])) = 'alice@cliente', 'equipe vê o e-mail do cliente');
 select t.ok((select count(*) from public.brlzx_audit where action = 'emissao.aprovar' and actor_org = 'proprietaria') = 1, 'auditoria guarda a empresa de quem agiu');
 select t.fails($$delete from public.brlzx_audit$$, 'permission denied');
 select t.fails($$update public.brlzx_audit set action = 'x'$$, 'permission denied');

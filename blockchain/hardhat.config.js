@@ -27,6 +27,8 @@ module.exports = {
     settings: { optimizer: { enabled: true, runs: 200 }, evmVersion: "cancun" },
   },
   networks: {
+    // Rede local. HARDHAT_CHAIN_ID=137 simula a Polygon nos testes de ponta a ponta das telas.
+    hardhat: { chainId: Number(process.env.HARDHAT_CHAIN_ID || 31337) },
     // Testnets — só para homologação. Mainnet deve ser assinada por multisig/hardware wallet.
     polygon: { url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com", accounts },
     polygonAmoy: { url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology", accounts },

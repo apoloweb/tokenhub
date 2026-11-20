@@ -129,6 +129,43 @@ begin
   return m;
 end; $$;
 
+-- Inclui alguém na equipe pelo e-mail da conta.
+create or replace function public.brlzx_set_member_by_email(p_email text, p_org text, p_active boolean default true)
+returns public.brlzx_members
+language plpgsql security definer set search_path = public as $$
+declare v_id uuid;
+begin
+  select id into v_id from auth.users where lower(email) = lower(trim(p_email));
+  if v_id is null then raise exception 'Não há conta com este e-mail. A pessoa precisa se cadastrar no TokenHub antes.'; end if;
+  return public.brlzx_set_member(v_id, p_org, p_active);
+end; $$;
+
+-- Localiza uma conta pelo e-mail, só para a equipe (abrir ordem em nome de cliente).
+create or replace function public.brlzx_find_user(p_email text)
+returns table (id uuid, email text, full_name text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.brlzx_is_staff() then raise exception 'Só a equipe consulta cadastros.'; end if;
+  return query
+    select u.id, u.email::text, p.full_name
+      from auth.users u left join public.profiles p on p.id = u.id
+     where lower(u.email) = lower(trim(p_email));
+end; $$;
+
+-- Nome e e-mail de clientes e colegas, só para a equipe (o cliente não enxerga outras pessoas).
+create or replace function public.brlzx_people(p_ids uuid[])
+returns table (id uuid, email text, full_name text, org text)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not public.brlzx_is_staff() then raise exception 'Só a equipe consulta cadastros.'; end if;
+  return query
+    select u.id, u.email::text, p.full_name, m.org
+      from auth.users u
+      left join public.profiles p on p.id = u.id
+      left join public.brlzx_members m on m.user_id = u.id and m.active
+     where u.id = any (p_ids);
+end; $$;
+
 -- =====================================================================
 -- 4) Configurações (linha única)
 -- =====================================================================
@@ -222,19 +259,24 @@ create policy "brlzx_wallets: dono ou equipe le"
   on public.brlzx_wallets for select to authenticated
   using (user_id = auth.uid() or public.brlzx_is_staff());
 
--- O cliente cadastra endereço próprio; não edita nem apaga. A emissora pode desativar.
-create or replace function public.brlzx_add_wallet(p_address text, p_label text default null)
+-- O cliente cadastra endereço próprio; não edita nem apaga. A emissora pode cadastrar em nome do
+-- cliente (atendimento presencial) e desativar.
+drop function if exists public.brlzx_add_wallet(text, text);
+create or replace function public.brlzx_add_wallet(p_address text, p_label text default null, p_user_id uuid default null)
 returns public.brlzx_wallets
 language plpgsql security definer set search_path = public as $$
-declare w public.brlzx_wallets; a text := lower(trim(p_address));
+declare w public.brlzx_wallets; a text := lower(trim(p_address)); v_user uuid := coalesce(p_user_id, auth.uid());
 begin
   if auth.uid() is null then raise exception 'Entre na sua conta.'; end if;
+  if v_user <> auth.uid() and public.brlzx_org() is distinct from 'emissora' then
+    raise exception 'Só a emissora cadastra carteira em nome de um cliente.';
+  end if;
   if a !~ '^0x[0-9a-f]{40}$' then raise exception 'Endereço de carteira inválido.'; end if;
   insert into public.brlzx_wallets (user_id, address, label)
-  values (auth.uid(), a, nullif(trim(p_label), ''))
+  values (v_user, a, nullif(trim(p_label), ''))
   on conflict (user_id, address) do update set label = coalesce(excluded.label, public.brlzx_wallets.label)
   returning * into w;
-  perform public.brlzx_log('carteira.cadastrar', 'wallet', w.id::text, jsonb_build_object('address', a));
+  perform public.brlzx_log('carteira.cadastrar', 'wallet', w.id::text, jsonb_build_object('address', a, 'user_id', v_user));
   return w;
 end; $$;
 
@@ -276,7 +318,8 @@ create table if not exists public.brlzx_orders (
   -- transações na rede
   proposal_tx     text check (proposal_tx is null or proposal_tx ~ '^0x[0-9a-f]{64}$'),
   mint_tx         text check (mint_tx     is null or mint_tx     ~ '^0x[0-9a-f]{64}$'),
-  deposit_tx      text check (deposit_tx  is null or deposit_tx  ~ '^0x[0-9a-f]{64}$'),  -- cliente -> tesouraria
+  deposit_tx      text check (deposit_tx  is null or deposit_tx  ~ '^0x[0-9a-f]{64}$'),  -- cliente -> tesouraria (confirmada pela emissora)
+  client_tx       text check (client_tx   is null or client_tx   ~ '^0x[0-9a-f]{64}$'),  -- resgate: hash informado pelo cliente, a conferir
   burn_tx         text check (burn_tx     is null or burn_tx     ~ '^0x[0-9a-f]{64}$'),
   -- quem fez o quê
   created_by      uuid not null references auth.users(id),
@@ -394,6 +437,19 @@ begin
   returning * into o;
   perform public.brlzx_log('resgate.solicitar', 'order', o.id::text,
     jsonb_build_object('amount_cents', o.amount_cents, 'wallet', o.wallet_address, 'user_id', v_user));
+  return o;
+end; $$;
+
+-- Cliente informa o hash do envio dos tokens à tesouraria. É só um aviso: quem confirma é a emissora.
+create or replace function public.brlzx_redeem_inform_tx(p_order_id uuid, p_tx text)
+returns public.brlzx_orders
+language plpgsql security definer set search_path = public as $$
+declare o public.brlzx_orders;
+begin
+  o := public.brlzx_lock_order(p_order_id, 'resgate', array['solicitada']);
+  if o.user_id <> auth.uid() then raise exception 'Você só informa o envio das próprias ordens.'; end if;
+  update public.brlzx_orders set client_tx = public.brlzx_tx(p_tx) where id = p_order_id returning * into o;
+  perform public.brlzx_log('resgate.cliente_informa_envio', 'order', o.id::text, jsonb_build_object('tx', o.client_tx));
   return o;
 end; $$;
 
@@ -632,7 +688,8 @@ revoke all on function
   public.brlzx_set_member(uuid, text, boolean),
   public.brlzx_save_network(integer, text, text),
   public.brlzx_save_deposit(jsonb),
-  public.brlzx_add_wallet(text, text),
+  public.brlzx_add_wallet(text, text, uuid),
+  public.brlzx_find_user(text),
   public.brlzx_set_wallet_active(uuid, boolean),
   public.brlzx_request_issue(bigint, text, text, uuid, text),
   public.brlzx_request_redeem(bigint, text, text, uuid, text),
@@ -646,14 +703,18 @@ revoke all on function
   public.brlzx_cancel_order(uuid),
   public.brlzx_attest_reserve(bigint, bigint, text, text),
   public.brlzx_compliance(text, text, text, text),
-  public.brlzx_totals()
+  public.brlzx_totals(),
+  public.brlzx_set_member_by_email(text, text, boolean),
+  public.brlzx_people(uuid[]),
+  public.brlzx_redeem_inform_tx(uuid, text)
   from public, anon;
 
 grant execute on function
   public.brlzx_set_member(uuid, text, boolean),
   public.brlzx_save_network(integer, text, text),
   public.brlzx_save_deposit(jsonb),
-  public.brlzx_add_wallet(text, text),
+  public.brlzx_add_wallet(text, text, uuid),
+  public.brlzx_find_user(text),
   public.brlzx_set_wallet_active(uuid, boolean),
   public.brlzx_request_issue(bigint, text, text, uuid, text),
   public.brlzx_request_redeem(bigint, text, text, uuid, text),
@@ -667,7 +728,10 @@ grant execute on function
   public.brlzx_cancel_order(uuid),
   public.brlzx_attest_reserve(bigint, bigint, text, text),
   public.brlzx_compliance(text, text, text, text),
-  public.brlzx_totals()
+  public.brlzx_totals(),
+  public.brlzx_set_member_by_email(text, text, boolean),
+  public.brlzx_people(uuid[]),
+  public.brlzx_redeem_inform_tx(uuid, text)
   to authenticated;
 
 -- =====================================================================
