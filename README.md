@@ -21,7 +21,7 @@ O schema do banco está em [`db/`](db/) — rode cada arquivo no **SQL Editor** 
 | Arquivo | O que cria |
 |---------|-----------|
 | `db/opportunities.sql` | Tabela `opportunities` (oportunidades, leitura pública) |
-| `db/wallet.sql` | `wallet_assets` (catálogo público) + `wallet_entries` (carteira por usuário, com RLS) |
+| `db/wallet.sql` | `wallet_assets` (catálogo público) + `wallet_entries` (carteira por usuário: participante só lê, admin grava) |
 
 Autenticação usa o **Supabase Auth** (e-mail/senha) — ver [`auth.js`](auth.js).
 
@@ -29,7 +29,7 @@ Autenticação usa o **Supabase Auth** (e-mail/senha) — ver [`auth.js`](auth.j
 
 - `supabase.js` — carrega as oportunidades do banco (fallback para fixtures de `data.js`).
 - `auth.js` — cadastro, login, logout e sessão (GoTrue REST).
-- `wallet-sync.js` — carrega a carteira do usuário logado; semeia uma carteira inicial no primeiro acesso; visitante usa a carteira de exemplo.
+- `wallet-sync.js` — carrega a carteira do usuário logado (somente leitura; conta nova começa vazia); visitante usa a carteira de exemplo.
 
 ## Observações
 

@@ -1,5 +1,6 @@
 -- TokenHub — Fatia 3: Carteira por usuário
 -- Rode TUDO no SQL Editor do Supabase (Run). Idempotente.
+-- Pré-requisito: db/admin-setup.sql (is_admin()).
 
 -- 1) Catálogo de ativos (global, leitura pública)
 create table if not exists public.wallet_assets (
@@ -31,7 +32,7 @@ on conflict (id) do update set
   symbol=excluded.symbol, network=excluded.network, decimals=excluded.decimals,
   mark=excluded.mark, tone=excluded.tone, price_cents=excluded.price_cents, sort_order=excluded.sort_order;
 
--- 2) Movimentações da carteira (por usuário, RLS dono-only)
+-- 2) Movimentações da carteira (por usuário; participante só lê, admin grava)
 create table if not exists public.wallet_entries (
   row_id     uuid primary key default gen_random_uuid(),
   user_id    uuid not null default auth.uid() references auth.users(id) on delete cascade,
@@ -56,11 +57,21 @@ drop policy if exists "wallet_entries inserir proprias" on public.wallet_entries
 drop policy if exists "wallet_entries editar proprias"  on public.wallet_entries;
 drop policy if exists "wallet_entries apagar proprias"  on public.wallet_entries;
 
+-- O participante só LÊ os próprios lançamentos. Quem grava é o admin:
+-- pela aprovação de um pedido (approve_participation_request) ou diretamente.
 create policy "wallet_entries ler proprias"
-  on public.wallet_entries for select to authenticated using (user_id = auth.uid());
-create policy "wallet_entries inserir proprias"
-  on public.wallet_entries for insert to authenticated with check (user_id = auth.uid());
-create policy "wallet_entries editar proprias"
-  on public.wallet_entries for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
-create policy "wallet_entries apagar proprias"
-  on public.wallet_entries for delete to authenticated using (user_id = auth.uid());
+  on public.wallet_entries for select to authenticated
+  using (user_id = auth.uid() or public.is_admin());
+
+drop policy if exists "wallet_entries admin insere" on public.wallet_entries;
+create policy "wallet_entries admin insere"
+  on public.wallet_entries for insert to authenticated with check (public.is_admin());
+
+drop policy if exists "wallet_entries admin edita" on public.wallet_entries;
+create policy "wallet_entries admin edita"
+  on public.wallet_entries for update to authenticated
+  using (public.is_admin()) with check (public.is_admin());
+
+drop policy if exists "wallet_entries admin apaga" on public.wallet_entries;
+create policy "wallet_entries admin apaga"
+  on public.wallet_entries for delete to authenticated using (public.is_admin());
