@@ -26,10 +26,17 @@ Stablecoin lastreada em reais. A TokenHub é a **emissora**; a **proprietária**
 | Atestar a reserva | | ✔ |
 | Bloquear / desbloquear endereço | ✔ | |
 | Pausar | ✔ | ✔ |
-| Retomar, upgrade, conceder papéis, mudar limites | | ✔ (admin do contrato) |
+| Retomar após pausa | | ✔ |
+| Upgrade, conceder papéis, mudar limites e tetos | | ✔ (pelo timelock, com espera de 48h) |
 | Alterar dados de depósito | | ✔ |
 
 O cliente cadastra carteiras, pede emissão e resgate, cancela ordem ainda não iniciada e consulta o próprio extrato. Não edita nem apaga nada.
+
+## Segurança, autocustódia e privacidade
+
+- **Autocustódia:** depois de emitido, o BRLZX circula livremente para qualquer carteira; o contrato não tem lista de endereços permitidos. O que pode impedir uma transferência é só o bloqueio de um endereço específico ou a pausa geral.
+- **Privacidade:** a rede é pública. Saldos e transferências de qualquer endereço são visíveis a todos; o que não é público é de quem é cada endereço. Esse vínculo fica só no banco do TokenHub (carteiras cadastradas e ordens), visível ao próprio cliente e à equipe. Nada que identifique a pessoa vai para a rede: a referência de cada ordem é um hash de um identificador aleatório.
+- **Parâmetros de segurança do contrato:** ver a tabela em `blockchain/README.md`.
 
 ## Como as transações são assinadas
 

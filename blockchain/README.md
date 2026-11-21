@@ -15,9 +15,10 @@ Nome e símbolo: BRLZX (padrão do script de deploy).
 | `setCoverageWindow(seg)` | admin | Altera o prazo de cobertura (padrão 48h, máximo 7 dias). |
 | `blockAccount` / `unblockAccount` | `COMPLIANCE_ROLE` | Endereço bloqueado não envia, não recebe e não movimenta saldo de terceiros. |
 | `destroyBlockedFunds(conta)` | `COMPLIANCE_ROLE` | Queima o saldo de endereço bloqueado (ordem judicial). |
+| `setMintLimits(porEmissão, por24h)` | admin | Tetos de emissão (padrão R$ 1 milhão por emissão e R$ 5 milhões por 24h). |
 | `pause()` | `PAUSER_ROLE` | Trava transferências, emissão e resgate. |
-| `unpause()` | admin | Só o admin retoma. |
-| upgrade | admin | Padrão UUPS. A troca de admin tem atraso obrigatório (padrão: 2 dias). |
+| `unpause()` | `UNPAUSER_ROLE` | Só a proprietária retoma. |
+| upgrade, papéis, limites | admin (timelock) | Toda ação administrativa espera 48h, pública, e pode ser cancelada antes de valer. |
 
 Também inclui `permit` (EIP-2612) e 6 casas decimais (R$ 1,00 = 1.000.000 unidades).
 
@@ -58,6 +59,26 @@ A TokenHub é a emissora; a proprietária do token é outra empresa, titular da 
 Os papéis são concedidos no próprio deploy; a carteira que faz o deploy não fica com nenhum.
 Para trocar de emissora, a proprietária revoga os papéis da TokenHub e concede à nova: o endereço do token e os saldos não mudam.
 
+## Parâmetros de segurança
+
+| Ameaça | Proteção no contrato | Valor padrão |
+|---|---|---|
+| Carteira de emissão comprometida | Teto por emissão e por 24h; acima de R$ 100 mil descobertos só com a 2ª assinatura da proprietária | R$ 1 mi / R$ 5 mi / R$ 100 mil |
+| Carteira de emissão e de aprovação comprometidas juntas | Os tetos valem também para a emissão aprovada | idem |
+| Chave administrativa comprometida | Admin é um timelock: upgrade, concessão de papéis e mudança de limites ficam 48h públicos antes de valer e podem ser cancelados | 48h |
+| Troca indevida do admin | Atraso próprio do OpenZeppelin `DefaultAdminRules` | 2 dias |
+| Ataque em curso | Qualquer das duas empresas pausa na hora; só a proprietária retoma | — |
+| Emissão em dobro da mesma ordem | Referência única por emissão e por resgate | — |
+| Emissão sem lastro prolongada | Prazo de cobertura: vencido, novas emissões travam | 48h |
+| Fundos de origem ilícita | Bloqueio de endereço e destruição de saldo bloqueado | — |
+
+O que o contrato **não** resolve e precisa de processo: guarda das chaves (multisig e hardware wallet),
+auditoria externa antes de mainnet, monitoramento dos eventos (`Minted`, `MintProposed`, `Paused`,
+`CallScheduled` do timelock) com alerta, e um roteiro de resposta a incidente.
+
+O timelock também atrasa correções legítimas: um ajuste de teto ou um upgrade de emergência leva 48h.
+A resposta imediata a incidente é a pausa.
+
 ## Fluxo com o backoffice
 
 - **Emissão:** backoffice abre uma ordem de emissão (Pix, TED, boleto, transferência interna ou dinheiro) → a emissora executa `mint(carteira, valor, ref)`, em que `ref` é a referência de 32 bytes gerada para a ordem (coluna `ref` de `brlzx_orders`). Se o total descoberto passar do limite, a emissora usa `proposeMint` e a proprietária `approveMint`.
@@ -69,20 +90,22 @@ Para trocar de emissora, a proprietária revoga os papéis da TokenHub e concede
 
 ```bash
 npm install
-npx hardhat test          # 42 testes
+npx hardhat test          # 51 testes
 ```
 
 Deploy em testnet (a chave de deploy é só para homologação):
 
 ```bash
 export DEPLOYER_PRIVATE_KEY=0x...            # só paga o gás; não recebe papel
-export OWNER_ADMIN_ADDRESS=0x...             # proprietária (multisig)
+export OWNER_ADMIN_ADDRESS=0x...             # proprietária: multisig que comanda o timelock
+export OWNER_OPS_ADDRESS=0x...               # proprietária: retoma após pausa (padrão: o multisig)
 export OWNER_RESERVE_ADDRESS=0x...           # proprietária: atesta a reserva
+export OWNER_APPROVER_ADDRESS=0x...          # proprietária: 2ª assinatura
 export TOKENHUB_MINTER_ADDRESS=0x...
 export TOKENHUB_TREASURY_ADDRESS=0x...
 export TOKENHUB_PAUSER_ADDRESS=0x...
 export TOKENHUB_COMPLIANCE_ADDRESS=0x...
-export OWNER_APPROVER_ADDRESS=0x...          # proprietária: 2ª assinatura
+export ADMIN_TIMELOCK_SECONDS=300            # só em testnet; em mainnet deixe o padrão de 48h
 npx hardhat run scripts/deploy.js --network polygonAmoy
 ```
 

@@ -19,10 +19,14 @@ import {AccessControlDefaultAdminRulesUpgradeable} from "@openzeppelin/contracts
 ///    novas emissões ficam travadas até a reserva ser recomposta.
 ///  - Dupla aprovação: emissão que deixe o total descoberto acumulado acima do limite (padrão
 ///    R$ 100 mil) não pode ser feita direto; precisa ser proposta por um MINTER e aprovada por outra carteira (APPROVER_ROLE).
+///  - Limites de emissão: teto por operação e teto por janela de 24h, valendo para emissão direta e
+///    aprovada. Limitam o estrago se uma carteira de emissão (e a de aprovação) for comprometida.
 ///  - Resgate (burn) só por BURNER_ROLE, a partir do próprio saldo (tesouraria), com referência única.
 ///  - Bloqueio de endereços e destruição de fundos bloqueados por COMPLIANCE_ROLE.
-///  - Pausa geral por PAUSER_ROLE.
-///  - Upgrade (UUPS) só pelo admin, cuja troca tem atraso obrigatório (DefaultAdminRules).
+///  - Pausa geral por PAUSER_ROLE; retomada por UNPAUSER_ROLE.
+///  - Upgrade (UUPS), concessão de papéis e mudança de limites só pelo admin. Em produção o admin é
+///    um TimelockController: toda ação administrativa fica pública e em espera (padrão 48h) antes de
+///    valer, e pode ser cancelada nesse intervalo. Ver scripts/deploy.js.
 contract StablecoinBRL is
     Initializable,
     ERC20Upgradeable,
@@ -37,6 +41,7 @@ contract StablecoinBRL is
     bytes32 public constant COMPLIANCE_ROLE = keccak256("COMPLIANCE_ROLE");
     bytes32 public constant RESERVE_ROLE = keccak256("RESERVE_ROLE");
     bytes32 public constant APPROVER_ROLE = keccak256("APPROVER_ROLE");
+    bytes32 public constant UNPAUSER_ROLE = keccak256("UNPAUSER_ROLE");
 
     /// @notice Carteiras que recebem os papéis operacionais no deploy (endereço zero = não conceder).
     struct InitialRoles {
@@ -46,6 +51,7 @@ contract StablecoinBRL is
         address compliance; // emissora
         address reserve; // proprietária (titular do lastro)
         address approver; // segunda assinatura das emissões descobertas acima do limite
+        address unpauser; // proprietária: retoma o contrato depois de uma pausa (e também pode pausar)
     }
 
     struct PendingMint {
@@ -65,6 +71,10 @@ contract StablecoinBRL is
         uint64 coverageWindow; // prazo para cobrir o supply emitido, em segundos
         uint256 dualApprovalThreshold; // total descoberto acumulado acima do qual a emissão exige 2ª aprovação
         mapping(bytes32 => PendingMint) pendingMints;
+        uint256 maxMintPerTx; // teto por emissão
+        uint256 mintLimitPerDay; // teto por janela de 24h
+        uint256 mintedInWindow;
+        uint64 mintWindowStart;
     }
 
     uint64 public constant MAX_COVERAGE_WINDOW = 7 days;
@@ -86,6 +96,7 @@ contract StablecoinBRL is
     event MintApproved(bytes32 indexed ref, address indexed approver);
     event MintCancelled(bytes32 indexed ref, address indexed operator);
     event DualApprovalThresholdChanged(uint256 previousThreshold, uint256 newThreshold);
+    event MintLimitsChanged(uint256 maxPerTx, uint256 perDay);
 
     error AccountBlocked(address account);
     error AccountNotBlocked(address account);
@@ -98,6 +109,8 @@ contract StablecoinBRL is
     error MintAlreadyPending(bytes32 ref);
     error NoPendingMint(bytes32 ref);
     error SelfApproval();
+    error MintPerTxLimitExceeded(uint256 amount, uint256 limit);
+    error DailyMintLimitExceeded(uint256 mintedAfter, uint256 limit);
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -123,13 +136,18 @@ contract StablecoinBRL is
         __AccessControlDefaultAdminRules_init(adminDelay, admin);
         _s().coverageWindow = 48 hours;
         _s().dualApprovalThreshold = 100_000 * 10 ** 6; // R$ 100 mil
-        _grantRole(PAUSER_ROLE, admin); // a proprietária também pode pausar
+        _s().maxMintPerTx = 1_000_000 * 10 ** 6; // R$ 1 milhão por emissão
+        _s().mintLimitPerDay = 5_000_000 * 10 ** 6; // R$ 5 milhões por 24h
         if (roles.minter != address(0)) _grantRole(MINTER_ROLE, roles.minter);
         if (roles.burner != address(0)) _grantRole(BURNER_ROLE, roles.burner);
         if (roles.pauser != address(0)) _grantRole(PAUSER_ROLE, roles.pauser);
         if (roles.compliance != address(0)) _grantRole(COMPLIANCE_ROLE, roles.compliance);
         if (roles.reserve != address(0)) _grantRole(RESERVE_ROLE, roles.reserve);
         if (roles.approver != address(0)) _grantRole(APPROVER_ROLE, roles.approver);
+        if (roles.unpauser != address(0)) {
+            _grantRole(UNPAUSER_ROLE, roles.unpauser);
+            _grantRole(PAUSER_ROLE, roles.unpauser); // a proprietária também pode pausar
+        }
     }
 
     function _s() private pure returns (StablecoinStorage storage $) {
@@ -164,6 +182,7 @@ contract StablecoinBRL is
         _validateMint(amount, ref);
         StablecoinStorage storage $ = _s();
         if ($.pendingMints[ref].proposer != address(0)) revert MintAlreadyPending(ref);
+        if (amount > $.maxMintPerTx) revert MintPerTxLimitExceeded(amount, $.maxMintPerTx);
         if ($.blocked[to]) revert AccountBlocked(to);
         $.pendingMints[ref] = PendingMint(to, amount, _msgSender());
         emit MintProposed(ref, to, amount, _msgSender());
@@ -214,6 +233,29 @@ contract StablecoinBRL is
         $.dualApprovalThreshold = newThreshold;
     }
 
+    /// @notice Altera os tetos de emissão (por operação e por janela de 24h).
+    function setMintLimits(uint256 maxPerTx, uint256 perDay) external onlyRole(DEFAULT_ADMIN_ROLE) {
+        StablecoinStorage storage $ = _s();
+        $.maxMintPerTx = maxPerTx;
+        $.mintLimitPerDay = perDay;
+        emit MintLimitsChanged(maxPerTx, perDay);
+    }
+
+    function maxMintPerTx() external view returns (uint256) {
+        return _s().maxMintPerTx;
+    }
+
+    function mintLimitPerDay() external view returns (uint256) {
+        return _s().mintLimitPerDay;
+    }
+
+    /// @notice Quanto ainda pode ser emitido na janela de 24h em curso.
+    function mintRemainingToday() external view returns (uint256) {
+        StablecoinStorage storage $ = _s();
+        uint256 used = block.timestamp >= $.mintWindowStart + 1 days ? 0 : $.mintedInWindow;
+        return used >= $.mintLimitPerDay ? 0 : $.mintLimitPerDay - used;
+    }
+
     function _validateMint(uint256 amount, bytes32 ref) private view {
         if (amount == 0) revert ZeroAmount();
         if (ref == bytes32(0)) revert InvalidReference();
@@ -225,7 +267,16 @@ contract StablecoinBRL is
     }
 
     function _executeMint(address to, uint256 amount, bytes32 ref, address operator) private {
-        _s().usedMintRef[ref] = true;
+        StablecoinStorage storage $ = _s();
+        if (amount > $.maxMintPerTx) revert MintPerTxLimitExceeded(amount, $.maxMintPerTx);
+        if (block.timestamp >= $.mintWindowStart + 1 days) {
+            $.mintWindowStart = uint64(block.timestamp);
+            $.mintedInWindow = 0;
+        }
+        uint256 mintedAfter = $.mintedInWindow + amount;
+        if (mintedAfter > $.mintLimitPerDay) revert DailyMintLimitExceeded(mintedAfter, $.mintLimitPerDay);
+        $.mintedInWindow = mintedAfter;
+        $.usedMintRef[ref] = true;
         _mint(to, amount);
         emit Minted(to, amount, ref, operator);
         _syncCoverage();
@@ -348,7 +399,7 @@ contract StablecoinBRL is
         _pause();
     }
 
-    function unpause() external onlyRole(DEFAULT_ADMIN_ROLE) {
+    function unpause() external onlyRole(UNPAUSER_ROLE) {
         _unpause();
     }
 
