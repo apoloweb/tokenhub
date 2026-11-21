@@ -232,40 +232,42 @@ describe("StablecoinBRL", () => {
   });
 
   describe("limites de emissão", () => {
-    beforeEach(async () => { await token.connect(reserve).attestReserve(U(100000000)); });
+    beforeEach(async () => { await token.connect(reserve).attestReserve(U(1000000000)); });
 
-    it("padrões: R$ 1 milhão por emissão e R$ 5 milhões por 24h", async () => {
-      expect(await token.maxMintPerTx()).to.equal(U(1000000));
-      expect(await token.mintLimitPerDay()).to.equal(U(5000000));
-      expect(await token.mintRemainingToday()).to.equal(U(5000000));
+    it("padrões: R$ 50 milhões por emissão e R$ 250 milhões por 24h", async () => {
+      expect(await token.maxMintPerTx()).to.equal(U(50000000));
+      expect(await token.mintLimitPerDay()).to.equal(U(250000000));
+      expect(await token.mintRemainingToday()).to.equal(U(250000000));
     });
 
-    it("emissão acima do teto por operação é recusada, direta ou aprovada", async () => {
-      await expect(token.connect(minter).mint(alice.address, U(1000000) + 1n, ref("ordem-1")))
+    it("emissão acima do teto por operação é recusada, direta, proposta ou aprovada", async () => {
+      await expect(token.connect(minter).mint(alice.address, U(50000000) + 1n, ref("ordem-1")))
         .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
-      await expect(token.connect(minter).proposeMint(alice.address, U(1000000) + 1n, ref("ordem-1")))
+      await expect(token.connect(minter).proposeMint(alice.address, U(50000000) + 1n, ref("ordem-1")))
         .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
       // teto reduzido depois da proposta: a aprovação também respeita
       await token.connect(minter).proposeMint(alice.address, U(900000), ref("ordem-2"));
-      await token.setMintLimits(U(500000), U(5000000));
+      await token.setMintLimits(U(500000), U(250000000));
       await expect(token.connect(approver).approveMint(ref("ordem-2")))
         .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
     });
 
     it("teto de 24h soma todas as emissões e zera na janela seguinte", async () => {
-      for (let i = 1; i <= 5; i++) await token.connect(minter).mint(alice.address, U(1000000), ref("ordem-" + i));
+      for (let i = 1; i <= 5; i++) await token.connect(minter).mint(alice.address, U(50000000), ref("ordem-" + i));
       expect(await token.mintRemainingToday()).to.equal(0);
       await expect(token.connect(minter).mint(alice.address, 1n, ref("ordem-6")))
         .to.be.revertedWithCustomError(token, "DailyMintLimitExceeded");
       await time.increase(24 * 3600);
-      expect(await token.mintRemainingToday()).to.equal(U(5000000));
-      await token.connect(minter).mint(alice.address, U(1000000), ref("ordem-6"));
+      expect(await token.mintRemainingToday()).to.equal(U(250000000));
+      await token.connect(minter).mint(alice.address, U(50000000), ref("ordem-6"));
     });
 
     it("só o admin muda os tetos", async () => {
-      await expect(token.connect(minter).setMintLimits(U(1e9), U(1e9))).to.be.revertedWithCustomError(token, "AccessControlUnauthorizedAccount");
-      await expect(token.setMintLimits(U(2000000), U(8000000))).to.emit(token, "MintLimitsChanged").withArgs(U(2000000), U(8000000));
-      await token.connect(minter).mint(alice.address, U(2000000), ref("ordem-1"));
+      await expect(token.connect(minter).setMintLimits(U(1e12), U(1e12))).to.be.revertedWithCustomError(token, "AccessControlUnauthorizedAccount");
+      await expect(token.setMintLimits(U(1000000), U(5000000))).to.emit(token, "MintLimitsChanged").withArgs(U(1000000), U(5000000));
+      await expect(token.connect(minter).mint(alice.address, U(1000000) + 1n, ref("ordem-1")))
+        .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
+      await token.connect(minter).mint(alice.address, U(1000000), ref("ordem-1"));
     });
   });
 

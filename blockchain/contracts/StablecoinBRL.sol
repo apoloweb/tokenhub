@@ -136,8 +136,8 @@ contract StablecoinBRL is
         __AccessControlDefaultAdminRules_init(adminDelay, admin);
         _s().coverageWindow = 48 hours;
         _s().dualApprovalThreshold = 100_000 * 10 ** 6; // R$ 100 mil
-        _s().maxMintPerTx = 1_000_000 * 10 ** 6; // R$ 1 milhão por emissão
-        _s().mintLimitPerDay = 5_000_000 * 10 ** 6; // R$ 5 milhões por 24h
+        _s().maxMintPerTx = 50_000_000 * 10 ** 6; // R$ 50 milhões por emissão
+        _s().mintLimitPerDay = 250_000_000 * 10 ** 6; // R$ 250 milhões por 24h
         if (roles.minter != address(0)) _grantRole(MINTER_ROLE, roles.minter);
         if (roles.burner != address(0)) _grantRole(BURNER_ROLE, roles.burner);
         if (roles.pauser != address(0)) _grantRole(PAUSER_ROLE, roles.pauser);

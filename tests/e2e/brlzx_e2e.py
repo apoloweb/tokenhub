@@ -227,8 +227,8 @@ def main():
         assert chain_call('balanceOf(address) view returns (uint256)', W_ALICE) == str(50_000 * 10**6)
         alice.open('/app/brlzx').expect('50.000,00 BRLZX').expect('Emitida')
 
-        # 6a) R$ 1,2 milhão passa do teto por emissão: a tela recusa antes de ir à rede, e a emissora rejeita a ordem
-        alice.fill('issue', amount='1.200.000,00', method='pix', wallet=W_ALICE)
+        # 6a) R$ 60 milhões passam do teto por emissão: a tela recusa antes de ir à rede, e a emissora rejeita a ordem
+        alice.fill('issue', amount='60.000.000,00', method='pix', wallet=W_ALICE)
         op.tab('ordens').click('[data-act="order-act"][data-key="emitir"]').expect('teto por emissão', op.msg())
         op.click('[data-act="order-reject"]').expect('rejeitada', op.msg())
         # 6b) R$ 1 milhão com reserva de 800 mil: descoberto de 250 mil > limite => proposta + aprovação da proprietária

@@ -15,7 +15,7 @@ Nome e símbolo: BRLZX (padrão do script de deploy).
 | `setCoverageWindow(seg)` | admin | Altera o prazo de cobertura (padrão 48h, máximo 7 dias). |
 | `blockAccount` / `unblockAccount` | `COMPLIANCE_ROLE` | Endereço bloqueado não envia, não recebe e não movimenta saldo de terceiros. |
 | `destroyBlockedFunds(conta)` | `COMPLIANCE_ROLE` | Queima o saldo de endereço bloqueado (ordem judicial). |
-| `setMintLimits(porEmissão, por24h)` | admin | Tetos de emissão (padrão R$ 1 milhão por emissão e R$ 5 milhões por 24h). |
+| `setMintLimits(porEmissão, por24h)` | admin | Tetos de emissão (padrão R$ 50 milhões por emissão e R$ 250 milhões por 24h). |
 | `pause()` | `PAUSER_ROLE` | Trava transferências, emissão e resgate. |
 | `unpause()` | `UNPAUSER_ROLE` | Só a proprietária retoma. |
 | upgrade, papéis, limites | admin (timelock) | Toda ação administrativa espera 48h, pública, e pode ser cancelada antes de valer. |
@@ -63,7 +63,7 @@ Para trocar de emissora, a proprietária revoga os papéis da TokenHub e concede
 
 | Ameaça | Proteção no contrato | Valor padrão |
 |---|---|---|
-| Carteira de emissão comprometida | Teto por emissão e por 24h; acima de R$ 100 mil descobertos só com a 2ª assinatura da proprietária | R$ 1 mi / R$ 5 mi / R$ 100 mil |
+| Carteira de emissão comprometida | Teto por emissão e por 24h; acima de R$ 100 mil descobertos só com a 2ª assinatura da proprietária | R$ 50 mi / R$ 250 mi / R$ 100 mil |
 | Carteira de emissão e de aprovação comprometidas juntas | Os tetos valem também para a emissão aprovada | idem |
 | Chave administrativa comprometida | Admin é um timelock: upgrade, concessão de papéis e mudança de limites ficam 48h públicos antes de valer e podem ser cancelados | 48h |
 | Troca indevida do admin | Atraso próprio do OpenZeppelin `DefaultAdminRules` | 2 dias |
@@ -71,6 +71,10 @@ Para trocar de emissora, a proprietária revoga os papéis da TokenHub e concede
 | Emissão em dobro da mesma ordem | Referência única por emissão e por resgate | — |
 | Emissão sem lastro prolongada | Prazo de cobertura: vencido, novas emissões travam | 48h |
 | Fundos de origem ilícita | Bloqueio de endereço e destruição de saldo bloqueado | — |
+
+Os tetos de emissão foram publicados altos de propósito, por falta de histórico de volume; a ideia é apertá-los
+quando houver. Enquanto isso, o teto diário é o prejuízo máximo de um dia com as carteiras de emissão e de
+aprovação comprometidas.
 
 O que o contrato **não** resolve e precisa de processo: guarda das chaves (multisig e hardware wallet),
 auditoria externa antes de mainnet, monitoramento dos eventos (`Minted`, `MintProposed`, `Paused`,
