@@ -7,7 +7,7 @@ import {
   ABI, NETWORKS, PAYMENT_METHODS, ORG_LABEL, STATUS, esc, isAddress, isTx, shortHex, fmtBRL, parseBRL,
   centsToUnits, unitsToCents, nextAction, waitingOn, canReject, isOpen, mintPath, coverageState, fmtCountdown,
   contractErrorMessage,
-} from './brlzx-core.js?v=brlzx-v2';
+} from './brlzx-core.js?v=brlzx-v3';
 
 // ───────────── Supabase (REST) ─────────────
 const headers = (extra = {}) => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (accessToken() || SUPABASE_ANON_KEY), ...extra });

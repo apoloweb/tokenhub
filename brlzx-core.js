@@ -7,7 +7,7 @@ export const unitsToCents = (units) => Number(BigInt(units) / UNITS_PER_CENT);
 
 export const NETWORKS = {
   137: { name: 'Polygon', rpc: 'https://polygon-rpc.com', explorer: 'https://polygonscan.com' },
-  80002: { name: 'Polygon Amoy (testes)', rpc: 'https://rpc-amoy.polygon.technology', explorer: 'https://amoy.polygonscan.com' },
+  80002: { name: 'Polygon Amoy (testes)', rpc: 'https://polygon-amoy-bor-rpc.publicnode.com', explorer: 'https://amoy.polygonscan.com' },
 };
 
 export const PAYMENT_METHODS = {
