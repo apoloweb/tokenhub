@@ -38,20 +38,42 @@ async function main() {
   const [deployer] = await ethers.getSigners();
   console.log(`Rede: ${network.name} | deployer: ${deployer.address}`);
 
+  // Na Polygon (principal e Amoy) os validadores ignoram transações com gorjeta baixa, e a estimativa
+  // automática às vezes devolve um valor baixo demais: a transação fica parada sem erro. Por isso a
+  // taxa é definida aqui, com piso de 30 gwei de gorjeta.
+  const { chainId } = await ethers.provider.getNetwork();
+  let gas = {};
+  if (chainId === 137n || chainId === 80002n) {
+    const floor = ethers.parseUnits(process.env.MIN_PRIORITY_GWEI || "30", "gwei");
+    const fee = await ethers.provider.getFeeData();
+    const block = await ethers.provider.getBlock("latest");
+    const tip = fee.maxPriorityFeePerGas && fee.maxPriorityFeePerGas > floor ? fee.maxPriorityFeePerGas : floor;
+    gas = { maxPriorityFeePerGas: tip, maxFeePerGas: (block.baseFeePerGas ?? 0n) * 2n + tip };
+    console.log(`Taxa: gorjeta ${ethers.formatUnits(tip, "gwei")} gwei, teto ${ethers.formatUnits(gas.maxFeePerGas, "gwei")} gwei`);
+  }
+  const balance = await ethers.provider.getBalance(deployer.address);
+  console.log(`Saldo do deployer: ${ethers.formatEther(balance)} POL/ETH`);
+
+  // Publica um contrato mostrando o hash, para dar para acompanhar no explorador se demorar.
+  const publish = async (label, factory, args) => {
+    const c = await factory.deploy(...args, gas);
+    console.log(`${label}: transação enviada ${c.deploymentTransaction().hash} — aguardando confirmação...`);
+    await c.waitForDeployment();
+    console.log(`${label}: confirmado em ${await c.getAddress()}`);
+    return c;
+  };
+
   // O admin do token é o timelock; só o multisig da proprietária agenda e executa por ele.
   const Timelock = await ethers.getContractFactory("StablecoinTimelock");
-  const timelock = await Timelock.deploy(timelockDelay, [ownerMultisig], [ownerMultisig]);
-  await timelock.waitForDeployment();
+  const timelock = await publish("1/3 Timelock", Timelock, [timelockDelay, [ownerMultisig], [ownerMultisig]]);
   const admin = await timelock.getAddress();
 
   const Impl = await ethers.getContractFactory("StablecoinBRL");
-  const impl = await Impl.deploy();
-  await impl.waitForDeployment();
+  const impl = await publish("2/3 Implementação", Impl, []);
 
   const init = Impl.interface.encodeFunctionData("initialize", [name, symbol, admin, adminDelay, roles]);
   const Proxy = await ethers.getContractFactory("StablecoinProxy");
-  const proxy = await Proxy.deploy(await impl.getAddress(), init);
-  await proxy.waitForDeployment();
+  const proxy = await publish("3/3 Proxy", Proxy, [await impl.getAddress(), init]);
 
   const token = Impl.attach(await proxy.getAddress());
   console.log("Implementação:", await impl.getAddress());

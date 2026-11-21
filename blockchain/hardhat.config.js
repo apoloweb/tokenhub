@@ -31,6 +31,6 @@ module.exports = {
     hardhat: { chainId: Number(process.env.HARDHAT_CHAIN_ID || 31337) },
     // Testnets — só para homologação. Mainnet deve ser assinada por multisig/hardware wallet.
     polygon: { url: process.env.POLYGON_RPC_URL || "https://polygon-rpc.com", accounts },
-    polygonAmoy: { url: process.env.AMOY_RPC_URL || "https://rpc-amoy.polygon.technology", accounts },
+    polygonAmoy: { url: process.env.AMOY_RPC_URL || "https://polygon-amoy-bor-rpc.publicnode.com", accounts },
   },
 };

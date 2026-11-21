@@ -27,7 +27,7 @@ import {syncWallet,resetWalletToExample,addWalletEntries} from './wallet-sync.js
 import {adminBody,mountAdmin,fetchMyProfile,saveMyProfile,fetchMyReferrals} from './admin-panel.js?v=admin-v5';
 import {opportunitiesBody,mountOpportunities} from './admin-opportunities.js?v=opp-v3';
 import {settingsBody,mountSettings} from './admin-settings.js?v=cfg-v1';
-import {brlzxBody,mountBrlzx} from './brlzx.js?v=brlzx-v3';
+import {brlzxBody,mountBrlzx} from './brlzx.js?v=brlzx-v4';
 import {renderSimulator,updateSimulator,mountSimulator} from './simulator.js?v=experience-feedback-v1';
 import {mountMotion} from './motion.js';
 import {mountAboutMotion} from './about-motion.js?v=film-fullscreen-v30';
