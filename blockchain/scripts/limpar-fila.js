@@ -54,10 +54,10 @@ async function main() {
   }
   for (const tx of sent) {
     try {
-      await p.waitForTransaction(tx.hash, 1, 180000);
+      await Promise.race([tx.wait(1), new Promise((_, no) => setTimeout(() => no(new Error("tempo esgotado")), 180000))]);
       console.log(`  ${tx.hash}: confirmada`);
-    } catch {
-      console.log(`  ${tx.hash}: ainda não confirmou em 3 minutos`);
+    } catch (e) {
+      console.log(`  ${tx.hash}: sem confirmação (${e.shortMessage || e.message})`);
     }
   }
   const after = await p.getTransactionCount(addr, "latest");
