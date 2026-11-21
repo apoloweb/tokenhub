@@ -7,7 +7,7 @@ import {
   ABI, NETWORKS, PAYMENT_METHODS, ORG_LABEL, STATUS, esc, isAddress, isTx, shortHex, fmtBRL, parseBRL,
   centsToUnits, unitsToCents, nextAction, waitingOn, canReject, isOpen, mintPath, coverageState, fmtCountdown,
   contractErrorMessage,
-} from './brlzx-core.js?v=brlzx-v1';
+} from './brlzx-core.js?v=brlzx-v2';
 
 // ───────────── Supabase (REST) ─────────────
 const headers = (extra = {}) => ({ apikey: SUPABASE_ANON_KEY, Authorization: 'Bearer ' + (accessToken() || SUPABASE_ANON_KEY), ...extra });
@@ -64,8 +64,25 @@ async function writer(settings) {
   return { contract: new Contract(chain.address, ABI, signer), address: (await signer.getAddress()).toLowerCase() };
 }
 
+// Algumas carteiras devolvem o erro do contrato cru (só os bytes). Procura e decodifica.
+function revertName(e) {
+  if (e?.revert?.name) return e.revert.name;
+  const seen = new Set();
+  const find = (v, depth) => {
+    if (!v || depth > 4 || seen.has(v)) return null;
+    if (typeof v === 'string') return /^0x[0-9a-fA-F]{8,}$/.test(v) ? v : null;
+    if (typeof v !== 'object') return null;
+    seen.add(v);
+    for (const k of ['data', 'error', 'info', 'originalError', 'cause']) { const r = find(v[k], depth + 1); if (r) return r; }
+    return null;
+  };
+  const data = find(e, 0);
+  if (!data || !ethersLib) return null;
+  try { return new ethersLib.Interface(ABI).parseError(data)?.name || null; } catch { return null; }
+}
+
 function chainError(e) {
-  const known = contractErrorMessage(e?.revert?.name);
+  const known = contractErrorMessage(revertName(e));
   if (known) return known;
   if (e?.code === 'ACTION_REJECTED') return 'Assinatura cancelada na carteira.';
   if (e?.code === 'INSUFFICIENT_FUNDS') return 'A carteira não tem saldo para pagar a taxa da rede.';
@@ -122,6 +139,9 @@ function injectStyle() {
   el.textContent = `
 #brlzx-root .panel{margin-bottom:18px}
 #brlzx-root h2{margin:0 0 6px;font-size:22px;line-height:1.25}
+#brlzx-root p{margin:0 0 12px}
+#brlzx-root form{margin-top:14px}
+#brlzx-root .brlzx-alert p{margin:8px 0 0}
 #brlzx-root .brlzx-mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
 #brlzx-root .brlzx-kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 16px;font-size:13px;margin:10px 0}
 #brlzx-root .brlzx-kv dt{color:var(--muted)}
@@ -170,10 +190,11 @@ export function mountBrlzx(app, { toast, isAdmin = false } = {}) {
     if (!chainOf(st.settings)) { st.chain = null; return; }
     try {
       const { contract: c } = await reader(st.settings);
-      const [supply, reserve, deadline, threshold, paused, reserveAt] = await Promise.all([
+      const [supply, reserve, deadline, threshold, paused, reserveAt, maxPerTx, perDay, remainingToday] = await Promise.all([
         c.totalSupply(), c.attestedReserve(), c.coverageDeadline(), c.dualApprovalThreshold(), c.paused(), c.reserveUpdatedAt(),
+        c.maxMintPerTx(), c.mintLimitPerDay(), c.mintRemainingToday(),
       ]);
-      st.chain = { supply, reserve, deadline: Number(deadline), threshold, paused, reserveAt: Number(reserveAt) };
+      st.chain = { supply, reserve, deadline: Number(deadline), threshold, paused, reserveAt: Number(reserveAt), maxPerTx, perDay, remainingToday };
     } catch (e) { st.chain = { error: e?.shortMessage || e?.message || 'Rede indisponível.' }; }
   }
 
@@ -405,6 +426,8 @@ export function mountBrlzx(app, { toast, isAdmin = false } = {}) {
         <dl class="brlzx-kv">
           <dt>Limite sem 2ª aprovação</dt><dd>${esc(fmtBRL(unitsToCents(c.threshold)))} de total descoberto</dd>
           <dt>Margem para emissão direta agora</dt><dd>${esc(fmtBRL(unitsToCents(margin)))} além do que a reserva cobre</dd>
+          <dt>Teto por emissão</dt><dd>${esc(fmtBRL(unitsToCents(c.maxPerTx)))}</dd>
+          <dt>Teto por 24h</dt><dd>${esc(fmtBRL(unitsToCents(c.perDay)))} · ainda disponível: ${esc(fmtBRL(unitsToCents(c.remainingToday)))}</dd>
           <dt>Situação do contrato</dt><dd>${c.paused ? 'Pausado' : 'Ativo'}</dd>
         </dl>
         ${diff !== 0 ? `<div class="brlzx-alert error">Divergência: a rede mostra ${esc(fmtBRL(unitsToCents(c.supply)))} em circulação e o backoffice ${esc(fmtBRL(t.em_circulacao_cents))}. Há emissão ou queima feita na rede e não registrada aqui (ou o inverso).</div>` : '<p class="small">Rede e backoffice conferem.</p>'}`;
@@ -517,7 +540,9 @@ export function mountBrlzx(app, { toast, isAdmin = false } = {}) {
     const units = centsToUnits(o.amount_cents);
     if (key === 'emitir') {
       const { contract: c } = await reader(st.settings);
-      const [supply, reserve, threshold] = await Promise.all([c.totalSupply(), c.attestedReserve(), c.dualApprovalThreshold()]);
+      const [supply, reserve, threshold, maxPerTx, remainingToday] = await Promise.all([c.totalSupply(), c.attestedReserve(), c.dualApprovalThreshold(), c.maxMintPerTx(), c.mintRemainingToday()]);
+      if (units > maxPerTx) throw new Error(`Esta ordem (${fmtBRL(o.amount_cents)}) passa do teto por emissão do contrato (${fmtBRL(unitsToCents(maxPerTx))}). Rejeite e peça ao cliente ordens menores, ou peça à proprietária a revisão do teto.`);
+      if (units > remainingToday) throw new Error(`O teto de emissão das últimas 24h não comporta esta ordem: restam ${fmtBRL(unitsToCents(remainingToday))}. Aguarde a janela seguinte ou peça à proprietária a revisão do teto.`);
       const { path, uncoveredAfter } = mintPath({ supply, reserve, amount: units, threshold });
       if (path === 'mint') {
         if (!confirm(`Emitir ${fmtBRL(o.amount_cents)} em BRLZX para ${o.wallet_address}?\n\nTotal descoberto depois desta emissão: ${fmtBRL(unitsToCents(uncoveredAfter))}.`)) return;

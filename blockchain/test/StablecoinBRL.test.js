@@ -18,6 +18,7 @@ describe("StablecoinBRL", () => {
     const roles = {
       minter: minter.address, burner: treasury.address, pauser: pauser.address,
       compliance: compliance.address, reserve: reserve.address, approver: approver.address,
+      unpauser: admin.address,
     };
     const init = Impl.interface.encodeFunctionData("initialize", ["BRLZX", "BRLZX", admin.address, 2 * DAY, roles]);
     const Proxy = await ethers.getContractFactory("StablecoinProxy");
@@ -35,7 +36,7 @@ describe("StablecoinBRL", () => {
     });
 
     it("não inicializa duas vezes, nem a implementação diretamente", async () => {
-      const none = { minter: Z, burner: Z, pauser: Z, compliance: Z, reserve: Z, approver: Z };
+      const none = { minter: Z, burner: Z, pauser: Z, compliance: Z, reserve: Z, approver: Z, unpauser: Z };
       await expect(token.initialize("x", "x", mallory.address, 0, none)).to.be.revertedWithCustomError(token, "InvalidInitialization");
       await expect(impl.initialize("x", "x", mallory.address, 0, none)).to.be.revertedWithCustomError(impl, "InvalidInitialization");
     });
@@ -140,9 +141,9 @@ describe("StablecoinBRL", () => {
       expect(await token.dualApprovalThreshold()).to.equal(U(100000));
     });
 
-    it("emissão coberta de qualquer valor passa direto", async () => {
+    it("emissão coberta passa direto, sem segunda aprovação", async () => {
       await token.connect(reserve).attestReserve(U(5000000));
-      await token.connect(minter).mint(alice.address, U(5000000), ref("ordem-1"));
+      await token.connect(minter).mint(alice.address, U(1000000), ref("ordem-1"));
     });
 
     it("descoberto até R$ 100 mil passa direto; acima exige proposta", async () => {
@@ -230,6 +231,105 @@ describe("StablecoinBRL", () => {
     });
   });
 
+  describe("limites de emissão", () => {
+    beforeEach(async () => { await token.connect(reserve).attestReserve(U(1000000000)); });
+
+    it("padrões: R$ 50 milhões por emissão e R$ 250 milhões por 24h", async () => {
+      expect(await token.maxMintPerTx()).to.equal(U(50000000));
+      expect(await token.mintLimitPerDay()).to.equal(U(250000000));
+      expect(await token.mintRemainingToday()).to.equal(U(250000000));
+    });
+
+    it("emissão acima do teto por operação é recusada, direta, proposta ou aprovada", async () => {
+      await expect(token.connect(minter).mint(alice.address, U(50000000) + 1n, ref("ordem-1")))
+        .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
+      await expect(token.connect(minter).proposeMint(alice.address, U(50000000) + 1n, ref("ordem-1")))
+        .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
+      // teto reduzido depois da proposta: a aprovação também respeita
+      await token.connect(minter).proposeMint(alice.address, U(900000), ref("ordem-2"));
+      await token.setMintLimits(U(500000), U(250000000));
+      await expect(token.connect(approver).approveMint(ref("ordem-2")))
+        .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
+    });
+
+    it("teto de 24h soma todas as emissões e zera na janela seguinte", async () => {
+      for (let i = 1; i <= 5; i++) await token.connect(minter).mint(alice.address, U(50000000), ref("ordem-" + i));
+      expect(await token.mintRemainingToday()).to.equal(0);
+      await expect(token.connect(minter).mint(alice.address, 1n, ref("ordem-6")))
+        .to.be.revertedWithCustomError(token, "DailyMintLimitExceeded");
+      await time.increase(24 * 3600);
+      expect(await token.mintRemainingToday()).to.equal(U(250000000));
+      await token.connect(minter).mint(alice.address, U(50000000), ref("ordem-6"));
+    });
+
+    it("só o admin muda os tetos", async () => {
+      await expect(token.connect(minter).setMintLimits(U(1e12), U(1e12))).to.be.revertedWithCustomError(token, "AccessControlUnauthorizedAccount");
+      await expect(token.setMintLimits(U(1000000), U(5000000))).to.emit(token, "MintLimitsChanged").withArgs(U(1000000), U(5000000));
+      await expect(token.connect(minter).mint(alice.address, U(1000000) + 1n, ref("ordem-1")))
+        .to.be.revertedWithCustomError(token, "MintPerTxLimitExceeded");
+      await token.connect(minter).mint(alice.address, U(1000000), ref("ordem-1"));
+    });
+  });
+
+  describe("admin atrás de timelock (configuração de produção)", () => {
+    const DELAY = 48 * 3600;
+    let tl, t2;
+
+    beforeEach(async () => {
+      // bob faz o papel do multisig da proprietária
+      const TL = await ethers.getContractFactory("StablecoinTimelock");
+      tl = await TL.deploy(DELAY, [bob.address], [bob.address]);
+      const Impl = await ethers.getContractFactory("StablecoinBRL");
+      const roles = { minter: minter.address, burner: treasury.address, pauser: pauser.address, compliance: compliance.address,
+        reserve: reserve.address, approver: approver.address, unpauser: bob.address };
+      const init = Impl.interface.encodeFunctionData("initialize", ["BRLZX", "BRLZX", await tl.getAddress(), 2 * DAY, roles]);
+      const Proxy = await ethers.getContractFactory("StablecoinProxy");
+      t2 = Impl.attach(await (await Proxy.deploy(await impl.getAddress(), init)).getAddress());
+    });
+
+    const op = async (data) => [await t2.getAddress(), 0, data, ethers.ZeroHash, ethers.id("sal")];
+
+    it("o multisig não age direto: nem papel, nem upgrade, nem limite", async () => {
+      await expect(t2.connect(bob).grantRole(await t2.MINTER_ROLE(), mallory.address)).to.be.revertedWithCustomError(t2, "AccessControlUnauthorizedAccount");
+      await expect(t2.connect(bob).setMintLimits(U(1e12), U(1e12))).to.be.revertedWithCustomError(t2, "AccessControlUnauthorizedAccount");
+      const V2 = await (await ethers.getContractFactory("StablecoinBRLV2Mock")).deploy();
+      await expect(t2.connect(bob).upgradeToAndCall(await V2.getAddress(), "0x")).to.be.revertedWithCustomError(t2, "AccessControlUnauthorizedAccount");
+    });
+
+    it("ação agendada só vale depois de 48h", async () => {
+      const data = t2.interface.encodeFunctionData("grantRole", [await t2.MINTER_ROLE(), alice.address]);
+      const args = await op(data);
+      await tl.connect(bob).schedule(...args, DELAY);
+      await expect(tl.connect(bob).execute(...args)).to.be.revertedWithCustomError(tl, "TimelockUnexpectedOperationState");
+      await time.increase(DELAY);
+      await tl.connect(bob).execute(...args);
+      expect(await t2.hasRole(await t2.MINTER_ROLE(), alice.address)).to.equal(true);
+    });
+
+    it("upgrade agendado pode ser cancelado antes do prazo", async () => {
+      const V2 = await (await ethers.getContractFactory("StablecoinBRLV2Mock")).deploy();
+      const args = await op(t2.interface.encodeFunctionData("upgradeToAndCall", [await V2.getAddress(), "0x"]));
+      await tl.connect(bob).schedule(...args, DELAY);
+      const id = await tl.hashOperation(...args);
+      await tl.connect(bob).cancel(id);
+      await time.increase(DELAY);
+      await expect(tl.connect(bob).execute(...args)).to.be.revertedWithCustomError(tl, "TimelockUnexpectedOperationState");
+    });
+
+    it("quem não é a proprietária não agenda; atraso menor que 48h é recusado", async () => {
+      const args = await op(t2.interface.encodeFunctionData("setMintLimits", [U(1e12), U(1e12)]));
+      await expect(tl.connect(mallory).schedule(...args, DELAY)).to.be.revertedWithCustomError(tl, "AccessControlUnauthorizedAccount");
+      await expect(tl.connect(bob).schedule(...args, DELAY - 1)).to.be.revertedWithCustomError(tl, "TimelockInsufficientDelay");
+    });
+
+    it("pausa e retomada não esperam o timelock", async () => {
+      await t2.connect(pauser).pause();
+      await t2.connect(bob).unpause();
+      await t2.connect(bob).pause();
+      expect(await t2.paused()).to.equal(true);
+    });
+  });
+
   describe("resgate", () => {
     beforeEach(async () => {
       await token.connect(minter).mint(alice.address, U(100), ref("ordem-1"));
@@ -302,7 +402,7 @@ describe("StablecoinBRL", () => {
   });
 
   describe("pausa", () => {
-    it("pausa trava transferência, emissão e resgate; só o admin despausa", async () => {
+    it("pausa trava transferência, emissão e resgate; só quem tem UNPAUSER_ROLE retoma", async () => {
       await token.connect(minter).mint(treasury.address, U(100), ref("ordem-1"));
       await token.connect(pauser).pause();
       await expect(token.connect(treasury).transfer(bob.address, U(1))).to.be.revertedWithCustomError(token, "EnforcedPause");

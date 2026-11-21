@@ -121,6 +121,8 @@ export function contractErrorMessage(name) {
     SelfApproval: 'Quem propôs não pode aprovar.',
     EnforcedPause: 'O contrato está pausado.',
     ERC20InsufficientBalance: 'Saldo de BRLZX insuficiente na carteira.',
+    MintPerTxLimitExceeded: 'Valor acima do teto por emissão definido no contrato. Divida em ordens menores ou peça à proprietária a revisão do teto.',
+    DailyMintLimitExceeded: 'Teto de emissão das últimas 24h atingido. Aguarde a janela seguinte ou peça à proprietária a revisão do teto.',
     ZeroAmount: 'Valor zero.',
   })[name] || null;
 }
@@ -137,6 +139,9 @@ export const ABI = [
   'function coverageDeadline() view returns (uint64)',
   'function coverageWindow() view returns (uint64)',
   'function dualApprovalThreshold() view returns (uint256)',
+  'function maxMintPerTx() view returns (uint256)',
+  'function mintLimitPerDay() view returns (uint256)',
+  'function mintRemainingToday() view returns (uint256)',
   'function isBlocked(address) view returns (bool)',
   'function isMintRefUsed(bytes32) view returns (bool)',
   'function pendingMint(bytes32) view returns (address to, uint256 amount, address proposer)',
@@ -161,6 +166,8 @@ export const ABI = [
   'error MintAlreadyPending(bytes32 ref)',
   'error NoPendingMint(bytes32 ref)',
   'error SelfApproval()',
+  'error MintPerTxLimitExceeded(uint256 amount, uint256 limit)',
+  'error DailyMintLimitExceeded(uint256 mintedAfter, uint256 limit)',
   'error EnforcedPause()',
   'error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)',
   'error ZeroAmount()',

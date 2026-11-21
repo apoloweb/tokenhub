@@ -205,13 +205,13 @@ def main():
         op.tab('equipe'); assert op.page.locator('form[data-form="deposit"]').count() == 0
         op.tab('cobertura').expect('feita pela proprietária'); assert op.page.locator('form[data-form="attest"]').count() == 0
 
-        # 3) proprietária informa a conta e atesta a reserva (R$ 1 milhão)
+        # 3) proprietária informa a conta e atesta a reserva (R$ 800 mil)
         own.open('/app/brlzx/backoffice').expect('Proprietária')
         own.tab('equipe').fill('deposit', owner_name='Proprietária Teste S.A.', deposit_pix_key='reserva@proprietaria.test', deposit_holder='Proprietária Teste S.A.')
         own.expect('salvos', own.msg())
-        own.tab('cobertura').fill('attest', cash='400.000,00', bonds='600.000,00', note='Extrato + Tesouro Selic')
-        own.expect('Reserva atestada', own.msg()).expect('1.000.000,00').expect('Tudo coberto')
-        assert chain_call('attestedReserve() view returns (uint256)') == str(1_000_000 * 10**6)
+        own.tab('cobertura').fill('attest', cash='400.000,00', bonds='400.000,00', note='Extrato + Tesouro Selic')
+        own.expect('Reserva atestada', own.msg()).expect('800.000,00').expect('Tudo coberto').expect('Teto por emissão')
+        assert chain_call('attestedReserve() view returns (uint256)') == str(800_000 * 10**6)
 
         # 4) cliente cadastra carteira e pede emissão de R$ 50 mil
         alice.open('/app/brlzx').expect('Proprietária Teste S.A.').expect('reserva@proprietaria.test').refuse('Abrir backoffice')
@@ -227,14 +227,18 @@ def main():
         assert chain_call('balanceOf(address) view returns (uint256)', W_ALICE) == str(50_000 * 10**6)
         alice.open('/app/brlzx').expect('50.000,00 BRLZX').expect('Emitida')
 
-        # 6) emissão de R$ 1,2 milhão: descoberto de 250 mil > limite => proposta + aprovação da proprietária
-        alice.fill('issue', amount='1.200.000,00', method='pix', wallet=W_ALICE)
+        # 6a) R$ 60 milhões passam do teto por emissão: a tela recusa antes de ir à rede, e a emissora rejeita a ordem
+        alice.fill('issue', amount='60.000.000,00', method='pix', wallet=W_ALICE)
+        op.tab('ordens').click('[data-act="order-act"][data-key="emitir"]').expect('teto por emissão', op.msg())
+        op.click('[data-act="order-reject"]').expect('rejeitada', op.msg())
+        # 6b) R$ 1 milhão com reserva de 800 mil: descoberto de 250 mil > limite => proposta + aprovação da proprietária
+        alice.open('/app/brlzx').expect('Rejeitada').fill('issue', amount='1.000.000,00', method='pix', wallet=W_ALICE)
         own.tab('ordens').expect('Nenhuma ordem esperando por você'); assert own.page.locator('[data-key="emitir"]').count() == 0, 'proprietária não emite'
         op.tab('ordens').click('[data-act="order-act"][data-key="emitir"]').expect('proposta', op.msg())
         op.expect('Aguardando 2ª aprovação'); assert op.page.locator('[data-key="aprovar"]').count() == 0, 'emissora não aprova'
         assert chain_call('balanceOf(address) view returns (uint256)', W_ALICE) == str(50_000 * 10**6), 'proposta não emite'
         own.tab('ordens').expect('1 ordem(ns) esperando por você').click('[data-act="order-act"][data-key="aprovar"]').expect('aprovada', own.msg())
-        assert chain_call('totalSupply() view returns (uint256)') == str(1_250_000 * 10**6)
+        assert chain_call('totalSupply() view returns (uint256)') == str(1_050_000 * 10**6)
         own.tab('cobertura').expect('250.000,00').expect('Faltam').expect('Rede e backoffice conferem')
         if shots: own.page.screenshot(path=shots + '/cobertura-proprietaria.png', full_page=True)
 
@@ -253,8 +257,8 @@ def main():
         own.tab('ordens').click('[data-act="order-act"][data-key="pagar"]').expect('Pagamento confirmado', own.msg())
         assert own.page.locator('[data-key="queimar"]').count() == 0, 'proprietária não queima'
         op.tab('ordens').click('[data-act="order-act"][data-key="queimar"]').expect('queimados', op.msg())
-        assert chain_call('totalSupply() view returns (uint256)') == str(1_230_000 * 10**6)
-        alice.open('/app/brlzx').expect('Concluída').expect('1.230.000,00 BRLZX')
+        assert chain_call('totalSupply() view returns (uint256)') == str(1_030_000 * 10**6)
+        alice.open('/app/brlzx').expect('Concluída').expect('1.030.000,00 BRLZX')
         if shots: alice.page.screenshot(path=shots + '/cliente-mobile.png', full_page=True)
 
         # 8) compliance: emissora bloqueia um endereço; proprietária só acompanha

@@ -82,12 +82,13 @@ assert.equal(contractErrorMessage('Desconhecido'), null);
 const sol = readFileSync(new URL('./blockchain/contracts/StablecoinBRL.sol', import.meta.url), 'utf8');
 const own = ['mint', 'proposeMint', 'approveMint', 'redeem', 'attestReserve', 'blockAccount', 'unblockAccount',
   'destroyBlockedFunds', 'pause', 'unpause', 'attestedReserve', 'reserveUpdatedAt', 'uncoveredSupply',
-  'coverageDeadline', 'coverageWindow', 'dualApprovalThreshold', 'isBlocked', 'isMintRefUsed', 'pendingMint'];
+  'coverageDeadline', 'coverageWindow', 'dualApprovalThreshold', 'isBlocked', 'isMintRefUsed', 'pendingMint',
+  'maxMintPerTx', 'mintLimitPerDay', 'mintRemainingToday'];
 for (const fn of own) {
   assert.ok(ABI.some((l) => l.startsWith(`function ${fn}(`)), `ABI sem ${fn}`);
   assert.ok(new RegExp(`function ${fn}\\(`).test(sol), `contrato sem ${fn}`);
 }
-for (const e of ['AccountBlocked', 'CoverageOverdue', 'DualApprovalRequired', 'ReferenceAlreadyUsed', 'MintAlreadyPending', 'NoPendingMint', 'SelfApproval', 'ZeroAmount']) {
+for (const e of ['AccountBlocked', 'CoverageOverdue', 'DualApprovalRequired', 'ReferenceAlreadyUsed', 'MintAlreadyPending', 'NoPendingMint', 'SelfApproval', 'ZeroAmount', 'MintPerTxLimitExceeded', 'DailyMintLimitExceeded']) {
   assert.ok(new RegExp(`error ${e}\\(`).test(sol), `contrato sem o erro ${e}`);
 }
 
